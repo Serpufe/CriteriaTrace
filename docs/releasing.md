@@ -15,7 +15,7 @@ The package version, CLI `--version`, changelog entry, and exact Action tag must
 | Node    | `node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1`     |
 | Python  | `python:3.13-alpine@sha256:79e7a9b9ff1cbceff819f856fb374477792a5967759d94df266de7b7b4120e6f` |
 
-These are multi-platform index digests resolved from Docker Hub on 2026-09-28. The tag tells a reader the intended runtime line; Docker selects the exact digest, including its architecture-specific manifest. The release workflow and Linux CI pull the pinned Node reference; a user running pytest must pre-pull the pinned Python reference. CriteriaTrace itself never pulls and sets `--pull=never`. If a pinned digest disappears or has no manifest for the host architecture, execution reports unavailable; it never switches to a newer tag or executes on the host.
+These are multi-platform index digests resolved from Docker Hub on 2026-09-28. The tag tells a reader the intended runtime line; Docker selects the exact digest, including its architecture-specific manifest. The release workflow and Linux CI pull both pinned references; a user running pytest must pre-pull the pinned Python reference locally. CriteriaTrace itself never pulls and sets `--pull=never`. If a pinned digest disappears or has no manifest for the host architecture, execution reports unavailable; it never switches to a newer tag or executes on the host.
 
 Docker documents [pulling by digest](https://docs.docker.com/reference/cli/docker/image/pull/) for this immutable-reference behavior.
 

@@ -50,6 +50,9 @@ jobs:
           image="$(node scripts/print-sandbox-image.mjs node)"
           docker pull "$image"
           docker image inspect "$image" --format '{{index .RepoDigests 0}}'
+          image="$(node scripts/print-sandbox-image.mjs python)"
+          docker pull "$image"
+          docker image inspect "$image" --format '{{index .RepoDigests 0}}'
 
       - name: Test
         run: npm test

@@ -53,8 +53,10 @@ jobs:
       - name: Check committed Action bundle
         run: git diff --exit-code -- action/dist/
 
-      - name: Pull pinned sandbox image
-        run: docker pull "$(node scripts/print-sandbox-image.mjs node)"
+      - name: Pull pinned sandbox images
+        run: |
+          docker pull "$(node scripts/print-sandbox-image.mjs node)"
+          docker pull "$(node scripts/print-sandbox-image.mjs python)"
 
       - name: Test and audit
         run: |
