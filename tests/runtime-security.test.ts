@@ -202,16 +202,52 @@ describe.skipIf(!available)('live isolated container attacks', () => {
     }
   });
   it('passes shell metacharacters, leading dashes, spaces, and Unicode as literal arguments', async () => {
-    const argument = '--name=$(touch injected) café';
+    const argumentsToPass = [
+      '--name=$(touch injected) café',
+      ';touch injected',
+      '&& touch injected',
+      '`touch injected`',
+      'line\nbreak',
+      '-rf',
+    ];
     const result = await runInProject([
       'node',
       '-e',
-      "const fs=require('fs'); console.log(JSON.stringify({arg:process.argv[1],injected:fs.existsSync('injected')}))",
+      "const fs=require('fs'); console.log(JSON.stringify({args:process.argv.slice(1),injected:fs.existsSync('injected')}))",
       '--',
-      argument,
+      ...argumentsToPass,
     ]);
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain(JSON.stringify({ arg: argument, injected: false }));
+    expect(result.output).toContain(JSON.stringify({ args: argumentsToPass, injected: false }));
+  });
+
+  it.skipIf(process.platform !== 'linux')('enforces both private tmpfs byte limits', async () => {
+    const script = `const fs=require('fs');const chunk=Buffer.alloc(1024*1024,1);for(const [label,path,limit] of [['TMP','/tmp/fill',70],['WORK','/work/fill',270]]){const fd=fs.openSync(path,'w');let outcome='NO_LIMIT';try{for(let i=0;i<limit;i++)fs.writeSync(fd,chunk)}catch(error){outcome=error.code}finally{fs.closeSync(fd)}console.log(label+':'+outcome)}`;
+    const result = await runInProject(['node', '-e', script], 'isolated', 15);
+    expect(
+      result.exitCode,
+      JSON.stringify({ termination: result.termination, output: result.output }),
+    ).toBe(0);
+    expect(result.output).toContain('TMP:ENOSPC');
+    expect(result.output).toContain('WORK:ENOSPC');
+  });
+
+  it.skipIf(process.platform !== 'linux')('enforces the 64-process cgroup limit', async () => {
+    const script = `const cp=require('child_process');let errors=0;for(let i=0;i<80;i++){cp.spawn('sleep',['5'],{stdio:'ignore'}).on('error',()=>errors++)}setTimeout(()=>{console.log('SPAWN_ERRORS:'+errors);process.exit(0)},500)`;
+    const result = await runInProject(['node', '-e', script], 'isolated', 10);
+    expect(
+      result.exitCode,
+      JSON.stringify({ termination: result.termination, output: result.output }),
+    ).toBe(0);
+    const errors = Number(result.output.match(/SPAWN_ERRORS:(\d+)/)?.[1]);
+    expect(errors).toBeGreaterThan(0);
+  });
+
+  it.skipIf(process.platform !== 'linux')('stops a bounded memory-over-limit probe', async () => {
+    const script = `const chunks=[];for(let i=0;i<600;i++)chunks.push(Buffer.alloc(1024*1024,1));console.log('MEMORY_LIMIT_MISSING')`;
+    const result = await runInProject(['node', '-e', script], 'isolated', 10);
+    expect(result.output).not.toContain('MEMORY_LIMIT_MISSING');
+    expect(result.exitCode === 0 && result.termination === 'exit').toBe(false);
   });
   it('keeps setup artifacts for the test in the same private workspace', async () => {
     const project = await createProject();
@@ -295,7 +331,7 @@ describe.skipIf(!available)('live isolated container attacks', () => {
 
   it('cannot reach DNS, Internet, metadata, or Docker gateway addresses', async () => {
     const script = `const dns=require('dns'),net=require('net'),fs=require('fs');const targets=['1.1.1.1','169.254.169.254','172.17.0.1','192.168.1.1'];function probe(host){return new Promise(resolve=>{const s=net.connect({host,port:80});s.setTimeout(400);s.on('connect',()=>{s.destroy();resolve(host+':CONNECTED')});s.on('error',()=>resolve(host+':DENIED'));s.on('timeout',()=>{s.destroy();resolve(host+':DENIED')})})}const dnsProbe=Promise.race([new Promise(resolve=>dns.lookup('example.com',error=>resolve('DNS:'+(error?'DENIED':'RESOLVED')))),new Promise(resolve=>setTimeout(()=>resolve('DNS:DENIED'),1200))]);Promise.all([dnsProbe,...targets.map(probe)]).then(lines=>{fs.writeSync(1,lines.join('\\n')+'\\n');process.exit(0)});`;
-    const result = await runInProject(['node', '-e', script]);
+    const result = await runInProject(['node', '-e', script], 'isolated', 8);
     expect(
       result.exitCode,
       JSON.stringify({
@@ -410,6 +446,17 @@ describe.skipIf(!available)('live isolated container attacks', () => {
         workspace: result.workspace,
       }),
     ).toBe('output-limit');
+    expect(result.outputTruncated).toBe(true);
+    expect(Buffer.byteLength(result.output)).toBeLessThanOrEqual(100_000);
+  });
+
+  it('applies the same output bound to stderr', async () => {
+    const result = await runInProject([
+      'node',
+      '-e',
+      'const fs=require("fs"), chunk=Buffer.alloc(65536,120); for (;;) fs.writeSync(2,chunk)',
+    ]);
+    expect(result.termination).toBe('output-limit');
     expect(result.outputTruncated).toBe(true);
     expect(Buffer.byteLength(result.output)).toBeLessThanOrEqual(100_000);
   });

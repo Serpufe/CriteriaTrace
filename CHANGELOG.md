@@ -7,6 +7,7 @@ Notable changes to CriteriaTrace are recorded here.
 - Require a live Docker backend for Linux isolation CI, run a controlled hostile PR through the real Action, and check exact base/head SHAs, token scope, event rejection, and forged verification output.
 - Report a disappeared container as unavailable and add a regression for that fail-closed behavior.
 - Stop the Docker exec client before force-removing its container on timeout or output overflow, avoiding a Linux cleanup stall under sustained stdout.
+- Exercise Linux tmpfs, process, memory, stdout, and stderr limits with bounded live probes.
 - Match GitHub Enterprise remotes to the configured API host even when GitHub Actions supplies `GITHUB_API_URL`.
 - Document mutable image tags and record the pulled digest in CI.
 - Default repository command execution now requires a local restricted Docker container; unavailable backends fail closed with static evidence. Added explicit `--trust-repo`, `--no-exec`, and `--allow-network` policies.
