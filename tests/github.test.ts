@@ -17,6 +17,17 @@ describe('GitHub remote parsing', () => {
     expect(githubSlug('https://gitlab.com/owner/repo.git')).toBeUndefined();
   });
 
+  it('rejects unrelated hosts with the GitHub Actions API URL set', () => {
+    const previous = process.env.GITHUB_API_URL;
+    process.env.GITHUB_API_URL = 'https://api.github.com';
+    try {
+      expect(githubSlug('https://gitlab.com/owner/repo.git')).toBeUndefined();
+    } finally {
+      if (previous === undefined) delete process.env.GITHUB_API_URL;
+      else process.env.GITHUB_API_URL = previous;
+    }
+  });
+
   it('rejects GitHub-like attacker domains before sending an issue token', async () => {
     const originalApiUrl = process.env.GITHUB_API_URL;
     const originalFetch = globalThis.fetch;

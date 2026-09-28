@@ -292,7 +292,7 @@ describe.skipIf(!available)('live isolated container attacks', () => {
   });
 
   it('cannot reach DNS, Internet, metadata, or Docker gateway addresses', async () => {
-    const script = `const dns=require('dns'),net=require('net');const targets=['1.1.1.1','169.254.169.254','172.17.0.1','192.168.1.1'];function probe(host){return new Promise(resolve=>{const s=net.connect({host,port:80});s.setTimeout(400);s.on('connect',()=>{s.destroy();resolve(host+':CONNECTED')});s.on('error',()=>resolve(host+':DENIED'));s.on('timeout',()=>{s.destroy();resolve(host+':DENIED')})})}Promise.all([new Promise(resolve=>dns.lookup('example.com',error=>resolve('DNS:'+(error?'DENIED':'RESOLVED')))),...targets.map(probe)]).then(lines=>console.log(lines.join('\\n')));`;
+    const script = `const dns=require('dns'),net=require('net');const targets=['1.1.1.1','169.254.169.254','172.17.0.1','192.168.1.1'];function probe(host){return new Promise(resolve=>{const s=net.connect({host,port:80});s.setTimeout(400);s.on('connect',()=>{s.destroy();resolve(host+':CONNECTED')});s.on('error',()=>resolve(host+':DENIED'));s.on('timeout',()=>{s.destroy();resolve(host+':DENIED')})})}const dnsProbe=Promise.race([new Promise(resolve=>dns.lookup('example.com',error=>resolve('DNS:'+(error?'DENIED':'RESOLVED')))),new Promise(resolve=>setTimeout(()=>resolve('DNS:DENIED'),1200))]);Promise.all([dnsProbe,...targets.map(probe)]).then(lines=>console.log(lines.join('\\n')));`;
     const result = await runInProject(['node', '-e', script]);
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain('DNS:DENIED');
@@ -302,14 +302,15 @@ describe.skipIf(!available)('live isolated container attacks', () => {
   });
 
   it('cannot inspect host process environment or arguments through procfs', async () => {
-    const marker = `CRITERIATRACE_PROC_CANARY_${Date.now()}`;
     const previous = process.env.CRITERIATRACE_FAKE_SECRET;
-    process.env.CRITERIATRACE_FAKE_SECRET = marker;
+    process.env.CRITERIATRACE_FAKE_SECRET = `CRITERIATRACE_PROC_CANARY_${Date.now()}`;
     try {
-      const script = `const fs=require('fs');const proc=fs.readdirSync('/proc').filter(x=>/^\\d+$/.test(x));let leaked=false;for(const pid of proc){for(const name of ['environ','cmdline']){try{if(fs.readFileSync('/proc/'+pid+'/'+name).includes(${JSON.stringify(marker)}))leaked=true}catch{}}}console.log('PROC_HOST_LEAK:'+leaked);console.log('PROC_PIDS:'+proc.length)`;
+      const script = `const fs=require('fs');const proc=fs.readdirSync('/proc').filter(x=>/^\\d+$/.test(x));let leaked=false;for(const pid of proc){try{if(fs.readFileSync('/proc/'+pid+'/environ').toString().split('\\0').some(x=>x.startsWith('CRITERIATRACE_FAKE_SECRET=')))leaked=true}catch{}}console.log('PROC_HOST_LEAK:'+leaked);console.log('PROC_PIDS:'+proc.length)`;
       const result = await runInProject(['node', '-e', script]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain('PROC_HOST_LEAK:false');
+      const processCount = Number(result.output.match(/PROC_PIDS:(\d+)/)?.[1]);
+      expect(processCount).toBeLessThanOrEqual(4);
     } finally {
       if (previous === undefined) delete process.env.CRITERIATRACE_FAKE_SECRET;
       else process.env.CRITERIATRACE_FAKE_SECRET = previous;

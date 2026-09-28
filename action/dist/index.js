@@ -55511,9 +55511,15 @@ function githubSlug(remote) {
             .replace(/\.git$/, '')
             .split('/')
             .filter(Boolean);
-        if (parts.length < 2 ||
-            (url.hostname.toLowerCase() !== 'github.com' && !process.env.GITHUB_API_URL))
+        if (parts.length < 2)
             return undefined;
+        if (url.hostname.toLowerCase() !== 'github.com') {
+            if (!process.env.GITHUB_API_URL)
+                return undefined;
+            const apiUrl = new URL(process.env.GITHUB_API_URL);
+            if (apiUrl.hostname.toLowerCase() !== url.hostname.toLowerCase())
+                return undefined;
+        }
         return { owner: parts.at(-2), repo: parts.at(-1) };
     }
     catch {

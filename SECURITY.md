@@ -29,6 +29,8 @@ The image names are mutable tags from Docker Hub. The verifier uses only an imag
 
 Repository symlinks may point outside `/work`, but resolution stays inside the container filesystem; host targets are not mounted. The export is never a sandbox by itself. Git inspection uses a minimal environment without user global/system config, disables fsmonitor, external diff and textconv on relevant commands, and never runs a repository-controlled fetch in the Action. Git commands still parse untrusted repository objects; keep Git and Docker current.
 
+GitHub issue enrichment accepts GitHub.com remotes or an enterprise remote whose hostname matches the configured HTTPS `GITHUB_API_URL`. A runner-provided API URL is not sufficient to treat an unrelated remote as GitHub.
+
 ## Evidence integrity
 
 Stdout and stderr are untrusted data. A repository can print `PASS`, claim a test filename, or deliberately return exit 0. Even a base-fails/head-passes pattern can be engineered by its own scripts. Such execution can support `PARTIAL`, never `VERIFIED` on its own. `VERIFIED` is reserved for a future independent evidence source. Candidate links from lexical matching or a semantic provider are review aids, not proof. Generated tests and their runners can also be incomplete or deceptive.
