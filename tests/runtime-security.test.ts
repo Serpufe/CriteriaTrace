@@ -305,10 +305,11 @@ describe.skipIf(!available)('live isolated container attacks', () => {
     await writeFile(outside, 'outside-fictional');
     await writeFile(hostTmpCanary, 'tmp-fictional');
     await writeFile(homeCanary, 'home-fictional');
-    const script = `const fs=require('fs');fs.symlinkSync(${JSON.stringify(outside)},'late-link');for (const [name,path] of Object.entries({outside:${JSON.stringify(outside)},home:${JSON.stringify(homeCanary)},tmp:${JSON.stringify(hostTmpCanary)},link:'escape-link',late:'late-link'})) {try {console.log(name+':'+fs.readFileSync(path,'utf8'))} catch {console.log(name+':DENIED')}} try {fs.writeFileSync(${JSON.stringify(join(dir, 'write'))},'bad');console.log('WRITE_OK')} catch {console.log('WRITE_DENIED')} console.log('ENV_VALUE:'+String(process.env.CRITERIATRACE_FAKE_SECRET));console.log('SOCKET:'+fs.existsSync('/var/run/docker.sock'));`;
+    const script = `const fs=require('fs');fs.symlinkSync(${JSON.stringify(outside)},'late-link');fs.symlinkSync('late-link','late-chain');for (const [name,path] of Object.entries({outside:${JSON.stringify(outside)},home:${JSON.stringify(homeCanary)},tmp:${JSON.stringify(hostTmpCanary)},link:'escape-link',chain:'escape-chain',late:'late-link',lateChain:'late-chain'})) {try {console.log(name+':'+fs.readFileSync(path,'utf8'))} catch {console.log(name+':DENIED')}} try {fs.writeFileSync(${JSON.stringify(join(dir, 'write'))},'bad');console.log('WRITE_OK')} catch {console.log('WRITE_DENIED')} console.log('ENV_VALUE:'+String(process.env.CRITERIATRACE_FAKE_SECRET));console.log('SOCKET:'+fs.existsSync('/var/run/docker.sock'));`;
     const project = await createProject({ testCommand: ['node', '-e', script] });
     try {
       await symlink(outside, join(project.root, 'escape-link'));
+      await symlink('escape-link', join(project.root, 'escape-chain'));
       await project.commitHead();
       const result = (
         await executeRevision({
@@ -324,7 +325,9 @@ describe.skipIf(!available)('live isolated container attacks', () => {
       expect(result.output).toContain('home:DENIED');
       expect(result.output).toContain('tmp:DENIED');
       expect(result.output).toContain('link:DENIED');
+      expect(result.output).toContain('chain:DENIED');
       expect(result.output).toContain('late:DENIED');
+      expect(result.output).toContain('lateChain:DENIED');
       expect(result.output).toContain('WRITE_DENIED');
       expect(result.output).toContain('ENV_VALUE:undefined');
       expect(result.output).toContain('SOCKET:false');

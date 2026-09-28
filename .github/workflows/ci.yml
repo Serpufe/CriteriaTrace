@@ -218,10 +218,61 @@ jobs:
           console.log('PASS: Docker daemon stopped; no repository command ran on host');
           NODE
 
+      - name: Lose Docker daemon during a running command
+        run: |
+          sudo systemctl start docker.socket docker.service
+          docker pull node:24-alpine
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+          import { tmpdir } from 'node:os';
+          import { join } from 'node:path';
+          import { executeCommand, startIsolatedSession, stopIsolatedSession } from './dist/runtime.js';
+          const workspace = await mkdtemp(join(tmpdir(), 'criteriatrace-daemon-loss-'));
+          const marker = join(workspace, 'host-executed');
+          const policy = { mode: 'isolated', allowNetwork: false, image: 'node:24-alpine' };
+          let name;
+          try {
+            await chmod(workspace, 0o755);
+            name = await startIsolatedSession(workspace, policy);
+            assert.ok(name, 'Docker session must start before the daemon loss');
+            const script = `const fs=require('fs');try{fs.writeFileSync(${JSON.stringify(marker)},'BAD')}catch{};console.log('DAEMON_LOSS_STARTED');setInterval(()=>{},1000)`;
+            const pending = executeCommand({
+              id: 'daemon-loss', revision: 'fixture', command: ['node', '-e', script],
+              workspace, timeoutMs: 4000, outputBytes: 1024,
+              policy: { ...policy, containerName: name },
+            });
+            let running = false;
+            for (let i = 0; i < 40; i++) {
+              const processes = execFileSync('docker', ['top', name], { encoding: 'utf8' });
+              if (processes.includes('DAEMON_LOSS_STARTED')) { running = true; break; }
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            assert.ok(running, 'Host stopped Docker only after the repository command started');
+            execFileSync('sudo', ['systemctl', 'stop', 'docker.service', 'docker.socket']);
+            const result = await pending;
+            await assert.rejects(readFile(marker), { code: 'ENOENT' });
+            await writeFile(join(process.env.RUNNER_TEMP, 'criteriatrace-daemon-loss.json'), JSON.stringify({
+              termination: result.termination, output: result.output, workspace: result.workspace,
+              hostMarkerExists: false,
+            }));
+            assert.ok(result.output.includes('DAEMON_LOSS_STARTED'));
+            assert.equal(result.termination, 'unavailable');
+            console.log('PASS: daemon lost during command; no host fallback');
+          } finally {
+            execFileSync('sudo', ['systemctl', 'start', 'docker.socket', 'docker.service']);
+            if (name) stopIsolatedSession(name);
+            await rm(workspace, { recursive: true, force: true });
+          }
+          NODE
+
       - name: Upload stopped-daemon evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: criteriatrace-stopped-daemon
-          path: ${{ runner.temp }}/criteriatrace-daemon-stop.json
+          path: |
+            ${{ runner.temp }}/criteriatrace-daemon-stop.json
+            ${{ runner.temp }}/criteriatrace-daemon-loss.json
           if-no-files-found: warn
