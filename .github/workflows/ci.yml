@@ -200,7 +200,12 @@ jobs:
             echo 'FAIL: Docker daemon remained available'
             exit 1
           fi
-          node dist/cli.js verify --text 'AC-STOP: Docker outage does not permit host execution' --base "$BASE_SHA" --head "$HEAD_SHA" --format json --output "$RUNNER_TEMP/criteriatrace-daemon-stop.json"
+          if node dist/cli.js verify --text 'AC-STOP: Docker outage does not permit host execution' --base "$BASE_SHA" --head "$HEAD_SHA" --format json --output "$RUNNER_TEMP/criteriatrace-daemon-stop.json"; then
+            verify_status=0
+          else
+            verify_status=$?
+          fi
+          test "$verify_status" -eq 3
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
           import { readFileSync } from 'node:fs';
