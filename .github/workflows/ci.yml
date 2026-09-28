@@ -83,6 +83,12 @@ jobs:
       - name: Package dry run
         run: npm pack --dry-run
 
+      - name: Install real tarball outside the checkout
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          npm pack --ignore-scripts --silent
+          node scripts/smoke-tarball.mjs criteriatrace-*.tgz
+
       - name: Upload actual demo report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
