@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { detectFramework, executeRevision } from '../src/execute.js';
 import { loadConfig } from '../src/config.js';
+import { verify } from '../src/verify.js';
 import {
   isolatedAvailability,
   executeCommand,
@@ -199,6 +200,27 @@ describe.skipIf(!available)('live isolated container attacks', () => {
     } finally {
       if (name) stopIsolatedSession(name);
       await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('labels an explicitly network-enabled verification in the report', async () => {
+    const project = await createProject({
+      testCommand: ['node', '-e', "console.log('NETWORK_ALLOWED')"],
+    });
+    try {
+      const report = await verify({
+        root: project.root,
+        sources: [
+          { id: 'network', kind: 'inline', title: 'Network report', text: 'AC-1: run test.' },
+        ],
+        base: project.base,
+        executionMode: 'isolated',
+        allowNetwork: true,
+      });
+      expect(report.executionPolicy).toEqual({ mode: 'isolated', network: 'enabled' });
+      expect(report.executions.find((item) => item.id === 'head-test')?.exitCode).toBe(0);
+    } finally {
+      await project.cleanup();
     }
   });
 
