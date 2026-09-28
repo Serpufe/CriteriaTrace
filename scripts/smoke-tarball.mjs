@@ -28,7 +28,22 @@ try {
   mkdirSync(project);
   run('npm', ['install', '--ignore-scripts', '--prefix', install, tarball], root);
   assert.match(run(bin, ['--help'], project).stdout, /isolated|Docker/i);
+  for (const command of ['init', 'doctor', 'inspect', 'verify', 'demo']) {
+    assert.match(run(bin, [command, '--help'], project).stdout, new RegExp(command));
+  }
   assert.equal(run(bin, ['--version'], project).stdout.trim(), '0.1.0');
+  assert.match(
+    run(
+      'node',
+      [
+        '--input-type=module',
+        '-e',
+        "import { verify } from 'criteriatrace'; console.log(typeof verify)",
+      ],
+      install,
+    ).stdout,
+    /function/,
+  );
   assert.equal(
     run(
       'npm',

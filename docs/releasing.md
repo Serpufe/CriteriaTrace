@@ -17,6 +17,8 @@ The package version, CLI `--version`, changelog entry, and exact Action tag must
 
 These are multi-platform index digests resolved from Docker Hub on 2026-09-28. The tag tells a reader the intended runtime line; Docker selects the exact digest, including its architecture-specific manifest. The release workflow and Linux CI pull the pinned Node reference; a user running pytest must pre-pull the pinned Python reference. CriteriaTrace itself never pulls and sets `--pull=never`. If a pinned digest disappears or has no manifest for the host architecture, execution reports unavailable; it never switches to a newer tag or executes on the host.
 
+Docker documents [pulling by digest](https://docs.docker.com/reference/cli/docker/image/pull/) for this immutable-reference behavior.
+
 Review image updates at least monthly and before each release. Run `docker buildx imagetools inspect node:24-alpine` and `docker buildx imagetools inspect python:3.13-alpine`, record the current index digest and supported platforms, then change `src/images.ts` in a PR. Read upstream release notes and scan the candidate image under the project's normal dependency review. Pull the proposed digest on Linux, run the full CI and controlled isolated tests, and verify `doctor` reports it available. Update the exact examples in README and this document in the same PR. Merge only after review; there is no automatic runtime image update.
 
 ## Candidate and package gates
@@ -44,3 +46,5 @@ git push origin v0.1.0
 Compare the local hash with the reviewed candidate; if the repository commit changes, rebuild and revalidate the candidate. The tag triggers the release-candidate workflow, which must pass before uploading or publishing anything. Verify the npm name, account ownership, and package access again. The first publication needs an authenticated maintainer account with the registry's required 2FA; do not put an npm token in this repository. From the reviewed tarball, the manual command is `npm publish --access public ./criteriatrace-0.1.0.tgz`. Create the GitHub Release for `v0.1.0` manually and attach the same tarball and SHA-256 manifest. Then verify installation from the registry and the Action from the tag.
 
 After the package exists on npm, configure an npm trusted publisher for the repository and a dedicated reviewed publish workflow. GitHub-hosted OIDC publishing avoids persistent npm tokens and can provide provenance for a public package from a public repository. Do not enable automatic publication until that trust relationship and workflow are independently reviewed.
+
+See [npm's trusted publishing requirements](https://docs.npmjs.com/trusted-publishers/) before configuring that future workflow.
