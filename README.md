@@ -117,8 +117,6 @@ on:
     types: [opened, synchronize, reopened]
 permissions:
   contents: read
-  pull-requests: read
-  issues: read
 jobs:
   trace:
     runs-on: ubuntu-latest
@@ -127,19 +125,17 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - run: docker pull node:24-alpine # Use python:3.13-alpine for pytest projects.
       - id: trace
         uses: Serpufe/criteriatrace@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: criteriatrace-evidence
           path: ${{ steps.trace.outputs.json-report-path }}
 ```
 
-Configure the project test and setup arrays so archived base/head copies can run them. To enable the optional one-comment update, set `comment: true`, pass `github-token`, and grant only the required comment permission (`issues: write` or `pull-requests: write`). Use `pull_request`; the Action rejects every other event, including `pull_request_target` and review events whose payload also contains a pull request. For forks, GitHub withholds repository secrets and CriteriaTrace also disables the key explicitly.
+Configure the project test and setup arrays so archived base/head copies can run them. The basic Action needs no token input: the PR event supplies its metadata, and `contents: read` is for checkout. To read referenced issues in a private repository, pass `github-token` with `issues: read`. To enable the optional one-comment update, set `comment: true`, pass `github-token`, and grant `issues: write` or `pull-requests: write`. Use `pull_request`; the Action rejects every other event, including `pull_request_target` and review events whose payload also contains a pull request. For forks, GitHub withholds repository secrets and CriteriaTrace also disables the key explicitly.
 
 ## Sources and criteria
 

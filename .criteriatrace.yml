@@ -1,0 +1,14 @@
+version: 1
+provider:
+  name: mock
+  model: deterministic
+verification:
+  counterfactual: true
+  generatedTests: false
+commands:
+  test: [node, tests/fixtures/hostile-pr.mjs]
+limits:
+  commandTimeoutSeconds: 10
+  maxCommandOutputBytes: 10000
+policy:
+  failOn: []

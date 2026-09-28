@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { chmod, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir, homedir } from 'node:os';
@@ -5,11 +6,23 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { detectFramework, executeRevision } from '../src/execute.js';
 import { loadConfig } from '../src/config.js';
-import { isolatedAvailability, executeCommand } from '../src/runtime.js';
+import {
+  isolatedAvailability,
+  executeCommand,
+  startIsolatedSession,
+  stopIsolatedSession,
+} from '../src/runtime.js';
 import { createProject } from './helpers.js';
 
 const available = !isolatedAvailability('node:24-alpine');
 const framework = detectFramework(undefined, []);
+
+it('requires a working local Docker daemon and pre-pulled image in Linux isolation CI', () => {
+  if (process.env.CRITERIATRACE_REQUIRE_DOCKER === '1') {
+    expect(process.platform).toBe('linux');
+    expect(isolatedAvailability('node:24-alpine')).toBeUndefined();
+  }
+});
 
 async function runInProject(
   command: string[],
@@ -75,6 +88,30 @@ describe('execution policy and adversarial repository commands', () => {
     }
   });
 
+  it('never falls back to host execution when the required image is absent', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'criteriatrace-no-image-'));
+    const marker = join(workspace, 'host-executed');
+    try {
+      const result = await executeCommand({
+        id: 'missing-image',
+        revision: 'fixture',
+        command: ['node', '-e', `require('fs').writeFileSync(${JSON.stringify(marker)},'bad')`],
+        workspace,
+        timeoutMs: 1000,
+        outputBytes: 1024,
+        policy: {
+          mode: 'isolated',
+          allowNetwork: false,
+          image: 'criteriatrace-fixture-image:deliberately-absent',
+        },
+      });
+      expect(result.termination).toBe('unavailable');
+      await expect(readFile(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
   it('stops an output bomb at the configured byte budget', async () => {
     const result = await executeCommand({
       id: 'bomb',
@@ -99,6 +136,69 @@ describe('execution policy and adversarial repository commands', () => {
 });
 
 describe.skipIf(!available)('live isolated container attacks', () => {
+  it('applies Linux container limits and network none to the actual Docker session', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'criteriatrace-limits-'));
+    let name: string | undefined;
+    try {
+      name = await startIsolatedSession(workspace, {
+        mode: 'isolated',
+        allowNetwork: false,
+        image: 'node:24-alpine',
+      });
+      expect(name).toBeDefined();
+      const inspected = JSON.parse(
+        execFileSync('docker', ['inspect', name!], { encoding: 'utf8' }),
+      ) as Array<{
+        HostConfig: {
+          NetworkMode: string;
+          ReadonlyRootfs: boolean;
+          CapDrop: string[];
+          SecurityOpt: string[];
+          PidsLimit: number;
+          Memory: number;
+          NanoCpus: number;
+          Tmpfs: Record<string, string>;
+        };
+        Config: { User: string };
+      }>;
+      const container = inspected[0]!;
+      expect(container.HostConfig.NetworkMode).toBe('none');
+      expect(container.HostConfig.ReadonlyRootfs).toBe(true);
+      expect(container.HostConfig.CapDrop).toContain('ALL');
+      expect(container.HostConfig.SecurityOpt).toContain('no-new-privileges');
+      expect(container.HostConfig.PidsLimit).toBe(64);
+      expect(container.HostConfig.Memory).toBe(512 * 1024 * 1024);
+      expect(container.HostConfig.NanoCpus).toBe(1_000_000_000);
+      expect(container.HostConfig.Tmpfs['/tmp']).toContain('size=64m');
+      expect(container.HostConfig.Tmpfs['/work']).toContain('size=256m');
+      expect(container.Config.User).toBe('65534:65534');
+    } finally {
+      if (name) stopIsolatedSession(name);
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('selects Docker bridge only when network is explicitly allowed', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'criteriatrace-network-'));
+    let name: string | undefined;
+    try {
+      name = await startIsolatedSession(workspace, {
+        mode: 'isolated',
+        allowNetwork: true,
+        image: 'node:24-alpine',
+      });
+      expect(name).toBeDefined();
+      const network = execFileSync(
+        'docker',
+        ['inspect', '--format', '{{.HostConfig.NetworkMode}}', name!],
+        { encoding: 'utf8' },
+      ).trim();
+      expect(network).toBe('bridge');
+    } finally {
+      if (name) stopIsolatedSession(name);
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
   it('passes shell metacharacters, leading dashes, spaces, and Unicode as literal arguments', async () => {
     const argument = '--name=$(touch injected) café';
     const result = await runInProject([
@@ -191,11 +291,96 @@ describe.skipIf(!available)('live isolated container attacks', () => {
     }
   });
 
+  it('cannot reach DNS, Internet, metadata, or Docker gateway addresses', async () => {
+    const script = `const dns=require('dns'),net=require('net');const targets=['1.1.1.1','169.254.169.254','172.17.0.1','192.168.1.1'];function probe(host){return new Promise(resolve=>{const s=net.connect({host,port:80});s.setTimeout(400);s.on('connect',()=>{s.destroy();resolve(host+':CONNECTED')});s.on('error',()=>resolve(host+':DENIED'));s.on('timeout',()=>{s.destroy();resolve(host+':DENIED')})})}Promise.all([new Promise(resolve=>dns.lookup('example.com',error=>resolve('DNS:'+(error?'DENIED':'RESOLVED')))),...targets.map(probe)]).then(lines=>console.log(lines.join('\\n')));`;
+    const result = await runInProject(['node', '-e', script]);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain('DNS:DENIED');
+    for (const target of ['1.1.1.1', '169.254.169.254', '172.17.0.1', '192.168.1.1']) {
+      expect(result.output).toContain(`${target}:DENIED`);
+    }
+  });
+
+  it('cannot inspect host process environment or arguments through procfs', async () => {
+    const marker = `CRITERIATRACE_PROC_CANARY_${Date.now()}`;
+    const previous = process.env.CRITERIATRACE_FAKE_SECRET;
+    process.env.CRITERIATRACE_FAKE_SECRET = marker;
+    try {
+      const script = `const fs=require('fs');const proc=fs.readdirSync('/proc').filter(x=>/^\\d+$/.test(x));let leaked=false;for(const pid of proc){for(const name of ['environ','cmdline']){try{if(fs.readFileSync('/proc/'+pid+'/'+name).includes(${JSON.stringify(marker)}))leaked=true}catch{}}}console.log('PROC_HOST_LEAK:'+leaked);console.log('PROC_PIDS:'+proc.length)`;
+      const result = await runInProject(['node', '-e', script]);
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain('PROC_HOST_LEAK:false');
+    } finally {
+      if (previous === undefined) delete process.env.CRITERIATRACE_FAKE_SECRET;
+      else process.env.CRITERIATRACE_FAKE_SECRET = previous;
+    }
+  });
+
   it('kills a persistent child and removes its container on timeout', async () => {
     const script = `require('child_process').spawn('node',['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'}).unref();setInterval(()=>{},1000)`;
     const result = await runInProject(['node', '-e', script], 'isolated', 1);
     expect(result.termination).toBe('timeout');
     expect(result.workspace).toContain('removed after execution');
+  });
+
+  it('removes the exact container and detached descendants after timeout', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'criteriatrace-process-'));
+    const policy = { mode: 'isolated' as const, allowNetwork: false, image: 'node:24-alpine' };
+    let name: string | undefined;
+    try {
+      name = await startIsolatedSession(workspace, policy);
+      expect(name).toBeDefined();
+      const result = await executeCommand({
+        id: 'descendant-timeout',
+        revision: 'fixture',
+        command: [
+          'node',
+          '-e',
+          "require('child_process').spawn('node',['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'}).unref();setInterval(()=>{},1000)",
+        ],
+        workspace,
+        timeoutMs: 1000,
+        outputBytes: 1024,
+        policy: { ...policy, containerName: name },
+      });
+      expect(result.termination).toBe('timeout');
+      const remaining = execFileSync(
+        'docker',
+        ['ps', '-a', '--filter', `name=^/${name}$`, '--format', '{{.ID}}'],
+        { encoding: 'utf8' },
+      );
+      expect(remaining.trim()).toBe('');
+    } finally {
+      if (name) stopIsolatedSession(name);
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('reports unavailable if the container disappears before docker exec', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'criteriatrace-vanished-'));
+    const marker = join(workspace, 'host-executed');
+    const policy = { mode: 'isolated' as const, allowNetwork: false, image: 'node:24-alpine' };
+    let name: string | undefined;
+    try {
+      name = await startIsolatedSession(workspace, policy);
+      expect(name).toBeDefined();
+      execFileSync('docker', ['rm', '-f', name!], { stdio: 'ignore' });
+      const result = await executeCommand({
+        id: 'vanished-container',
+        revision: 'fixture',
+        command: ['node', '-e', `require('fs').writeFileSync(${JSON.stringify(marker)},'bad')`],
+        workspace,
+        timeoutMs: 1000,
+        outputBytes: 1024,
+        policy: { ...policy, containerName: name },
+      });
+      expect(result.termination).toBe('unavailable');
+      expect(result.exitCode).toBeNull();
+      await expect(readFile(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      if (name) stopIsolatedSession(name);
+      await rm(workspace, { recursive: true, force: true });
+    }
   });
 
   it('removes the container when a repository test floods output', async () => {

@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Set up Node 24
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -41,10 +43,18 @@ jobs:
 
       - name: Prepare isolated runtime for adversarial tests
         if: matrix.os == 'ubuntu-latest'
-        run: docker pull node:24-alpine
+        run: |
+          docker pull node:24-alpine
+          docker image inspect node:24-alpine --format '{{index .RepoDigests 0}}'
 
       - name: Test
         run: npm test
+        env:
+          CRITERIATRACE_REQUIRE_DOCKER: ${{ matrix.os == 'ubuntu-latest' && '1' || '0' }}
+
+      - name: Audit dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: npm audit --audit-level=low
 
       - name: Build CLI and Action bundle
         run: npm run build
@@ -71,3 +81,75 @@ jobs:
           name: criteriatrace-demo-${{ matrix.os }}
           path: .criteriatrace-demo/
           if-no-files-found: error
+
+  hostile-pr-action:
+    name: Controlled hostile PR against trusted Action
+    if: github.event_name == 'pull_request' && github.base_ref == 'codex/criteria-baseline' && github.head_ref == 'codex/linux-sandbox-validation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out trusted Action from exact PR base
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted-action
+          persist-credentials: false
+
+      - name: Check out PR with both revisions
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          path: target
+          persist-credentials: false
+
+      - name: Prepare real Docker isolation and fictional host canaries
+        run: |
+          docker pull node:24-alpine
+          docker image inspect node:24-alpine --format '{{index .RepoDigests 0}}'
+          printf 'fictional host canary\n' > "$HOME/.criteriatrace-host-canary"
+          printf 'fictional host canary\n' > /tmp/criteriatrace-host-canary
+
+      - name: Execute trusted Action against controlled hostile PR
+        id: trace
+        uses: ./trusted-action
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}/target
+          CRITERIATRACE_FAKE_SECRET: LINUX_CANARY_SECRET
+
+      - name: Assert Action's real report
+        env:
+          REPORT_PATH: ${{ steps.trace.outputs.json-report-path }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync(process.env.REPORT_PATH, 'utf8'));
+          assert.equal(report.base, process.env.BASE_SHA);
+          assert.equal(report.head, process.env.HEAD_SHA);
+          assert.deepEqual(report.executionPolicy, { mode: 'isolated', network: 'disabled' });
+          assert.equal(report.summary.VERIFIED, 0);
+          const head = report.executions.find(item => item.id === 'head-test');
+          assert.equal(head?.termination, 'exit');
+          assert.equal(head?.exitCode, 0);
+          assert.match(head.output, /PASS VERIFIED all acceptance criteria/);
+          console.log('PASS: exact revisions, isolated execution, hostile probes, and no forged VERIFIED');
+          NODE
+
+      - name: Reject review event even with a PR-shaped payload
+        run: |
+          printf '{"pull_request":{"number":1}}\n' > "$RUNNER_TEMP/criteriatrace-review-event.json"
+          if env GITHUB_EVENT_NAME=pull_request_review GITHUB_EVENT_PATH="$RUNNER_TEMP/criteriatrace-review-event.json" node trusted-action/action/dist/index.js > "$RUNNER_TEMP/criteriatrace-review-event.log" 2>&1; then
+            echo 'FAIL: pull_request_review was accepted'
+            exit 1
+          fi
+          rg 'requires a pull_request event' "$RUNNER_TEMP/criteriatrace-review-event.log"
+
+      - name: Upload Action evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: criteriatrace-hostile-pr-action
+          path: ${{ runner.temp }}/criteriatrace/
+          if-no-files-found: warn

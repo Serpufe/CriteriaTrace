@@ -91061,6 +91061,19 @@ function removeContainer(name) {
         return false;
     }
 }
+function isContainerRunning(name) {
+    try {
+        return ((0,external_node_child_process_namespaceObject.execFileSync)(dockerBinary(), ['inspect', '--format', '{{.State.Running}}', name], {
+            env: dockerEnvironment,
+            timeout: 5000,
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+        }).trim() === 'true');
+    }
+    catch {
+        return false;
+    }
+}
 function killGroup(child) {
     if (!child.pid)
         return;
@@ -91145,6 +91158,12 @@ async function runProcess(request, executable, args, env, containerName, cleanup
     process.off('SIGTERM', onSignal);
     if (pendingStop)
         await pendingStop;
+    if (containerName &&
+        !cleanupOnClose &&
+        termination === 'exit' &&
+        !isContainerRunning(containerName)) {
+        termination = 'unavailable';
+    }
     if (containerName && cleanupOnClose) {
         // --rm removes a normal exit; force removal also kills background descendants.
         if (!removeContainer(containerName))
@@ -91171,9 +91190,11 @@ async function runProcess(request, executable, args, env, containerName, cleanup
                 : output),
         workspace: cleanupFailed
             ? 'Container cleanup could not be confirmed.'
-            : containerName
-                ? 'Ephemeral container; source archive mounted read-only; removed after execution.'
-                : 'Temporary Git archive; trusted host execution.',
+            : termination === 'unavailable' && containerName
+                ? 'Container was unavailable during execution.'
+                : containerName
+                    ? 'Ephemeral container; source archive mounted read-only; removed after execution.'
+                    : 'Temporary Git archive; trusted host execution.',
     };
 }
 //# sourceMappingURL=runtime.js.map
