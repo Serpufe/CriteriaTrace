@@ -210,30 +210,34 @@ export async function executeCommand(request: ExecutionRequest): Promise<Command
 }
 
 function removeContainer(name: string): boolean {
-  try {
-    execFileSync(dockerBinary(), ['rm', '-f', name], {
-      env: dockerEnvironment,
-      timeout: 10_000,
-      stdio: 'ignore',
-    });
-  } catch {
-    /* Already removed, or daemon unavailable. Confirm below. */
-  }
-  try {
-    const remaining = execFileSync(
-      dockerBinary(),
-      ['ps', '-a', '--filter', `name=^/${name}$`, '--format', '{{.ID}}'],
-      {
+  const deadline = Date.now() + 5000;
+  do {
+    try {
+      execFileSync(dockerBinary(), ['rm', '-f', name], {
         env: dockerEnvironment,
-        timeout: 5000,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      },
-    );
-    return remaining.trim() === '';
-  } catch {
-    return false;
-  }
+        timeout: 2000,
+        stdio: 'ignore',
+      });
+    } catch {
+      /* Already removed, removal in progress, or daemon unavailable. Confirm below. */
+    }
+    try {
+      const remaining = execFileSync(
+        dockerBinary(),
+        ['ps', '-a', '--filter', `name=^/${name}$`, '--format', '{{.ID}}'],
+        {
+          env: dockerEnvironment,
+          timeout: 2000,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+        },
+      );
+      if (remaining.trim() === '') return true;
+    } catch {
+      /* A lost daemon cannot confirm cleanup. */
+    }
+  } while (Date.now() < deadline);
+  return false;
 }
 
 function killGroup(child: ChildProcess): void {
@@ -286,10 +290,11 @@ async function runProcess(
     if (stopping) return;
     stopping = true;
     termination = reason;
+    // Release docker exec's output pipe before waiting on daemon removal.
+    killGroup(child);
     if (containerName) {
       if (!removeContainer(containerName)) cleanupFailed = true;
     }
-    killGroup(child);
   };
   const collect = (chunk: Buffer) => {
     const remaining = Math.max(0, request.outputBytes - outputSize);

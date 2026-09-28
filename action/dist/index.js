@@ -55511,9 +55511,15 @@ function githubSlug(remote) {
             .replace(/\.git$/, '')
             .split('/')
             .filter(Boolean);
-        if (parts.length < 2 ||
-            (url.hostname.toLowerCase() !== 'github.com' && !process.env.GITHUB_API_URL))
+        if (parts.length < 2)
             return undefined;
+        if (url.hostname.toLowerCase() !== 'github.com') {
+            if (!process.env.GITHUB_API_URL)
+                return undefined;
+            const apiUrl = new URL(process.env.GITHUB_API_URL);
+            if (apiUrl.hostname.toLowerCase() !== url.hostname.toLowerCase())
+                return undefined;
+        }
         return { owner: parts.at(-2), repo: parts.at(-1) };
     }
     catch {
@@ -91038,28 +91044,33 @@ async function executeCommand(request) {
     return runProcess(request, request.command[0], request.command.slice(1), commandEnvironment(request.home ?? (0,external_node_path_namespaceObject.join)(request.workspace, '..', 'home')), undefined);
 }
 function removeContainer(name) {
-    try {
-        (0,external_node_child_process_namespaceObject.execFileSync)(dockerBinary(), ['rm', '-f', name], {
-            env: dockerEnvironment,
-            timeout: 10_000,
-            stdio: 'ignore',
-        });
-    }
-    catch {
-        /* Already removed, or daemon unavailable. Confirm below. */
-    }
-    try {
-        const remaining = (0,external_node_child_process_namespaceObject.execFileSync)(dockerBinary(), ['ps', '-a', '--filter', `name=^/${name}$`, '--format', '{{.ID}}'], {
-            env: dockerEnvironment,
-            timeout: 5000,
-            encoding: 'utf8',
-            stdio: ['ignore', 'pipe', 'ignore'],
-        });
-        return remaining.trim() === '';
-    }
-    catch {
-        return false;
-    }
+    const deadline = Date.now() + 5000;
+    do {
+        try {
+            (0,external_node_child_process_namespaceObject.execFileSync)(dockerBinary(), ['rm', '-f', name], {
+                env: dockerEnvironment,
+                timeout: 2000,
+                stdio: 'ignore',
+            });
+        }
+        catch {
+            /* Already removed, removal in progress, or daemon unavailable. Confirm below. */
+        }
+        try {
+            const remaining = (0,external_node_child_process_namespaceObject.execFileSync)(dockerBinary(), ['ps', '-a', '--filter', `name=^/${name}$`, '--format', '{{.ID}}'], {
+                env: dockerEnvironment,
+                timeout: 2000,
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore'],
+            });
+            if (remaining.trim() === '')
+                return true;
+        }
+        catch {
+            /* A lost daemon cannot confirm cleanup. */
+        }
+    } while (Date.now() < deadline);
+    return false;
 }
 function killGroup(child) {
     if (!child.pid)
@@ -91107,11 +91118,12 @@ async function runProcess(request, executable, args, env, containerName, cleanup
             return;
         stopping = true;
         termination = reason;
+        // Release docker exec's output pipe before waiting on daemon removal.
+        killGroup(child);
         if (containerName) {
             if (!removeContainer(containerName))
                 cleanupFailed = true;
         }
-        killGroup(child);
     };
     const collect = (chunk) => {
         const remaining = Math.max(0, request.outputBytes - outputSize);
