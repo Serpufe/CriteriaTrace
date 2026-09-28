@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { chmod, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir, homedir } from 'node:os';
@@ -377,14 +377,24 @@ describe.skipIf(!available)('live isolated container attacks', () => {
   it('cannot inspect host process environment or arguments through procfs', async () => {
     const previous = process.env.CRITERIATRACE_FAKE_SECRET;
     process.env.CRITERIATRACE_FAKE_SECRET = `CRITERIATRACE_PROC_CANARY_${Date.now()}`;
+    const hostArgument = `CRITERIATRACE_HOST_ARG_${Date.now()}`;
+    const hostProcess = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)', hostArgument], {
+      stdio: 'ignore',
+    });
     try {
-      const script = `const fs=require('fs');const proc=fs.readdirSync('/proc').filter(x=>/^\\d+$/.test(x));let leaked=false;for(const pid of proc){try{if(fs.readFileSync('/proc/'+pid+'/environ').toString().split('\\0').some(x=>x.startsWith('CRITERIATRACE_FAKE_SECRET=')))leaked=true}catch{}}console.log('PROC_HOST_LEAK:'+leaked);console.log('PROC_PIDS:'+proc.length)`;
+      await new Promise<void>((resolve, reject) => {
+        hostProcess.once('spawn', resolve);
+        hostProcess.once('error', reject);
+      });
+      const script = `const fs=require('fs');const proc=fs.readdirSync('/proc').filter(x=>/^\\d+$/.test(x));const needle=String.fromCharCode(${[...hostArgument].map((char) => char.charCodeAt(0)).join(',')});let envLeaked=false,argLeaked=false;for(const pid of proc){try{if(fs.readFileSync('/proc/'+pid+'/environ').toString().split('\\0').some(x=>x.startsWith('CRITERIATRACE_FAKE_SECRET=')))envLeaked=true}catch{}try{if(fs.readFileSync('/proc/'+pid+'/cmdline').toString().includes(needle))argLeaked=true}catch{}}console.log('PROC_HOST_ENV_LEAK:'+envLeaked);console.log('PROC_HOST_ARG_LEAK:'+argLeaked);console.log('PROC_PIDS:'+proc.length)`;
       const result = await runInProject(['node', '-e', script]);
       expect(result.exitCode).toBe(0);
-      expect(result.output).toContain('PROC_HOST_LEAK:false');
+      expect(result.output).toContain('PROC_HOST_ENV_LEAK:false');
+      expect(result.output).toContain('PROC_HOST_ARG_LEAK:false');
       const processCount = Number(result.output.match(/PROC_PIDS:(\d+)/)?.[1]);
       expect(processCount).toBeLessThanOrEqual(4);
     } finally {
+      hostProcess.kill('SIGKILL');
       if (previous === undefined) delete process.env.CRITERIATRACE_FAKE_SECRET;
       else process.env.CRITERIATRACE_FAKE_SECRET = previous;
     }
@@ -405,19 +415,33 @@ describe.skipIf(!available)('live isolated container attacks', () => {
       await chmod(workspace, 0o755);
       name = await startIsolatedSession(workspace, policy);
       expect(name).toBeDefined();
-      const result = await executeCommand({
+      const grandchild =
+        "require('fs').writeFileSync('/work/grandchild-ready','yes');setInterval(()=>{},1000)";
+      const child = `require('child_process').spawn('node',['-e',${JSON.stringify(grandchild)}],{detached:true,stdio:'ignore'}).unref();setInterval(()=>{},1000)`;
+      const parent = `require('child_process').spawn('node',['-e',${JSON.stringify(child)}],{detached:true,stdio:'ignore'}).unref();setInterval(()=>{},1000)`;
+      const pending = executeCommand({
         id: 'descendant-timeout',
         revision: 'fixture',
-        command: [
-          'node',
-          '-e',
-          "require('child_process').spawn('node',['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'}).unref();setInterval(()=>{},1000)",
-        ],
+        command: ['node', '-e', parent],
         workspace,
-        timeoutMs: 1000,
+        timeoutMs: 2000,
         outputBytes: 1024,
         policy: { ...policy, containerName: name },
       });
+      let grandchildStarted = false;
+      for (let i = 0; i < 10; i++) {
+        try {
+          execFileSync('docker', ['exec', name!, 'test', '-f', '/work/grandchild-ready'], {
+            stdio: 'ignore',
+          });
+          grandchildStarted = true;
+          break;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+      expect(grandchildStarted).toBe(true);
+      const result = await pending;
       expect(result.termination).toBe('timeout');
       const remaining = execFileSync(
         'docker',
