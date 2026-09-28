@@ -201,6 +201,31 @@ describe.skipIf(!available)('live isolated container attacks', () => {
       await rm(workspace, { recursive: true, force: true });
     }
   });
+
+  it.skipIf(process.platform !== 'linux')(
+    'does not execute on host when docker run rejects a mount',
+    async () => {
+      const workspace = await mkdtemp(join(tmpdir(), 'criteriatrace,bad-mount-'));
+      const marker = join(workspace, 'host-executed');
+      try {
+        const policy = { mode: 'isolated' as const, allowNetwork: false, image: 'node:24-alpine' };
+        expect(await startIsolatedSession(workspace, policy)).toBeUndefined();
+        const result = await executeCommand({
+          id: 'bad-mount',
+          revision: 'fixture',
+          command: ['node', '-e', `require('fs').writeFileSync(${JSON.stringify(marker)},'bad')`],
+          workspace,
+          timeoutMs: 1000,
+          outputBytes: 1024,
+          policy,
+        });
+        expect(result.termination).toBe('unavailable');
+        await expect(readFile(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+      } finally {
+        await rm(workspace, { recursive: true, force: true });
+      }
+    },
+  );
   it('passes shell metacharacters, leading dashes, spaces, and Unicode as literal arguments', async () => {
     const argumentsToPass = [
       '--name=$(touch injected) café',

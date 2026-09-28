@@ -163,3 +163,60 @@ jobs:
           name: criteriatrace-hostile-pr-action
           path: ${{ runner.temp }}/criteriatrace/
           if-no-files-found: warn
+
+  stopped-daemon:
+    name: Fail closed with stopped Docker daemon
+    if: github.event_name == 'pull_request' && github.base_ref == 'codex/criteria-baseline' && github.head_ref == 'codex/linux-sandbox-validation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out controlled PR with both revisions
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Build CLI before stopping Docker
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+
+      - name: Stop daemon and prove no host fallback
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CRITERIATRACE_FAKE_SECRET: LINUX_CANARY_SECRET
+        run: |
+          trap 'sudo systemctl start docker.socket docker.service || true' EXIT
+          sudo systemctl stop docker.service docker.socket
+          if docker info >/dev/null 2>&1; then
+            echo 'FAIL: Docker daemon remained available'
+            exit 1
+          fi
+          node dist/cli.js verify --text 'AC-STOP: Docker outage does not permit host execution' --base "$BASE_SHA" --head "$HEAD_SHA" --format json --output "$RUNNER_TEMP/criteriatrace-daemon-stop.json"
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/criteriatrace-daemon-stop.json`, 'utf8'));
+          assert.equal(report.base, process.env.BASE_SHA);
+          assert.equal(report.head, process.env.HEAD_SHA);
+          assert.deepEqual(report.executionPolicy, { mode: 'isolated', network: 'disabled' });
+          assert.equal(report.executions.find(item => item.id === 'head-test')?.termination, 'unavailable');
+          assert.ok(report.executions.every(item => item.workspace === 'No repository command ran.'));
+          console.log('PASS: Docker daemon stopped; no repository command ran on host');
+          NODE
+
+      - name: Upload stopped-daemon evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: criteriatrace-stopped-daemon
+          path: ${{ runner.temp }}/criteriatrace-daemon-stop.json
+          if-no-files-found: warn

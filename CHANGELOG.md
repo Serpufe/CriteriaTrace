@@ -8,6 +8,7 @@ Notable changes to CriteriaTrace are recorded here.
 - Report a disappeared container as unavailable and add a regression for that fail-closed behavior.
 - Stop the Docker exec client before force-removing its container on timeout or output overflow, avoiding a Linux cleanup stall under sustained stdout.
 - Exercise Linux tmpfs, process, memory, stdout, and stderr limits with bounded live probes.
+- Add a separate GitHub-hosted Ubuntu job that stops Docker and verifies the CLI records unavailable execution without running repository commands on the host.
 - Match GitHub Enterprise remotes to the configured API host even when GitHub Actions supplies `GITHUB_API_URL`.
 - Document mutable image tags and record the pulled digest in CI.
 - Default repository command execution now requires a local restricted Docker container; unavailable backends fail closed with static evidence. Added explicit `--trust-repo`, `--no-exec`, and `--allow-network` policies.
