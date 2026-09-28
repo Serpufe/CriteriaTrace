@@ -79,6 +79,9 @@ jobs:
       - name: Install and exercise the tarball outside the checkout
         run: node scripts/smoke-tarball.mjs criteriatrace-*.tgz
 
+      - name: Exercise bundled Action in a temporary Git repository
+        run: node scripts/smoke-action.mjs
+
       - name: Upload candidate for manual publication
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

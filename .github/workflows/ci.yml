@@ -56,6 +56,10 @@ jobs:
         env:
           CRITERIATRACE_REQUIRE_DOCKER: ${{ matrix.os == 'ubuntu-latest' && '1' || '0' }}
 
+      - name: Exercise bundled Action in a temporary Git repository
+        if: matrix.os == 'ubuntu-latest'
+        run: node scripts/smoke-action.mjs
+
       - name: Audit dependencies
         if: matrix.os == 'ubuntu-latest'
         run: npm audit --audit-level=low
