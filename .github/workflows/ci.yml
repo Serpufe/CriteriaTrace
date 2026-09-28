@@ -88,6 +88,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Check out PR with both revisions
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
       - name: Check out trusted Action from exact PR base
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -95,13 +102,14 @@ jobs:
           path: trusted-action
           persist-credentials: false
 
-      - name: Check out PR with both revisions
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          path: target
-          persist-credentials: false
+      - name: Confirm exact PR revisions are present
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git cat-file -e "$BASE_SHA^{commit}"
+          git cat-file -e "$HEAD_SHA^{commit}"
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
 
       - name: Prepare real Docker isolation and fictional host canaries
         run: |
@@ -114,7 +122,6 @@ jobs:
         id: trace
         uses: ./trusted-action
         env:
-          GITHUB_WORKSPACE: ${{ github.workspace }}/target
           CRITERIATRACE_FAKE_SECRET: LINUX_CANARY_SECRET
 
       - name: Assert Action's real report
