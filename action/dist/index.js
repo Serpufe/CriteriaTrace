@@ -91044,28 +91044,33 @@ async function executeCommand(request) {
     return runProcess(request, request.command[0], request.command.slice(1), commandEnvironment(request.home ?? (0,external_node_path_namespaceObject.join)(request.workspace, '..', 'home')), undefined);
 }
 function removeContainer(name) {
-    try {
-        (0,external_node_child_process_namespaceObject.execFileSync)(dockerBinary(), ['rm', '-f', name], {
-            env: dockerEnvironment,
-            timeout: 10_000,
-            stdio: 'ignore',
-        });
-    }
-    catch {
-        /* Already removed, or daemon unavailable. Confirm below. */
-    }
-    try {
-        const remaining = (0,external_node_child_process_namespaceObject.execFileSync)(dockerBinary(), ['ps', '-a', '--filter', `name=^/${name}$`, '--format', '{{.ID}}'], {
-            env: dockerEnvironment,
-            timeout: 5000,
-            encoding: 'utf8',
-            stdio: ['ignore', 'pipe', 'ignore'],
-        });
-        return remaining.trim() === '';
-    }
-    catch {
-        return false;
-    }
+    const deadline = Date.now() + 5000;
+    do {
+        try {
+            (0,external_node_child_process_namespaceObject.execFileSync)(dockerBinary(), ['rm', '-f', name], {
+                env: dockerEnvironment,
+                timeout: 2000,
+                stdio: 'ignore',
+            });
+        }
+        catch {
+            /* Already removed, removal in progress, or daemon unavailable. Confirm below. */
+        }
+        try {
+            const remaining = (0,external_node_child_process_namespaceObject.execFileSync)(dockerBinary(), ['ps', '-a', '--filter', `name=^/${name}$`, '--format', '{{.ID}}'], {
+                env: dockerEnvironment,
+                timeout: 2000,
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore'],
+            });
+            if (remaining.trim() === '')
+                return true;
+        }
+        catch {
+            /* A lost daemon cannot confirm cleanup. */
+        }
+    } while (Date.now() < deadline);
+    return false;
 }
 function isContainerRunning(name) {
     try {

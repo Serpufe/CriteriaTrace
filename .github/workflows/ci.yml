@@ -81,6 +81,7 @@ jobs:
           name: criteriatrace-demo-${{ matrix.os }}
           path: .criteriatrace-demo/
           if-no-files-found: error
+          include-hidden-files: true
 
   hostile-pr-action:
     name: Controlled hostile PR against trusted Action
