@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "tool": {
+    "name": "CriteriaTrace",
+    "version": "0.1.0"
+  },
+  "repository": {
+    "root": "temporary CriteriaTrace repository snapshot"
+  },
+  "base": "1926ffcdd9d33846733e45ccd2d0e1da21934df0",
+  "head": "aac70ce41dd623d1f3d57213ce3b41dd7aef5e95",
+  "createdAt": "2026-09-27T17:20:36.419Z",
+  "sources": [
+    {
+      "id": "local-spec",
+      "kind": "markdown",
+      "title": "docs/examples/self-dogfood/spec.md",
+      "text": "# Acceptance criteria\n\n- AC-98: Git status evidence reports whether the working tree is clean and identifies tracked or untracked changes.\n"
+    }
+  ],
+  "criteria": [
+    {
+      "id": "AC-98",
+      "text": "Git status evidence reports whether the working tree is clean and identifies tracked or untracked changes.",
+      "origin": "explicit",
+      "sourceId": "local-spec",
+      "status": "VERIFIED",
+      "implementationEvidence": [
+        {
+          "path": "src/cli.ts",
+          "relation": "implementation",
+          "method": "lexical",
+          "note": "Lexical overlap 58%; inspect the cited file.",
+          "lines": "251-254"
+        },
+        {
+          "path": "src/git.ts",
+          "relation": "implementation",
+          "method": "lexical",
+          "note": "Lexical overlap 17%; inspect the cited file."
+        },
+        {
+          "path": "src/verify.ts",
+          "relation": "implementation",
+          "method": "lexical",
+          "note": "Lexical overlap 67%; inspect the cited file.",
+          "lines": "225-228"
+        }
+      ],
+      "testEvidence": [
+        {
+          "path": "tests/self-dogfood.mjs",
+          "relation": "test",
+          "method": "explicit-id",
+          "note": "Contains AC-98.",
+          "lines": "9-12"
+        },
+        {
+          "path": "tests/git.test.ts",
+          "relation": "test",
+          "method": "lexical",
+          "note": "Lexical overlap 50%; inspect the cited file.",
+          "lines": "6-9"
+        },
+        {
+          "path": "tests/verify.test.ts",
+          "relation": "test",
+          "method": "lexical",
+          "note": "Lexical overlap 50%; inspect the cited file.",
+          "lines": "167-170"
+        }
+      ],
+      "executions": ["head-test", "base-test"],
+      "reason": "Test output identifies an explicitly tagged criterion test and head passed (exit 0); the configured base suite failed (exit 1)."
+    }
+  ],
+  "executions": [
+    {
+      "id": "base-test",
+      "revision": "1926ffcdd9d33846733e45ccd2d0e1da21934df0",
+      "command": ["node", "tests/self-dogfood.mjs"],
+      "exitCode": 1,
+      "signal": null,
+      "timedOut": false,
+      "outputTruncated": false,
+      "durationMs": 64,
+      "output": "file://[temporary workspace]/tests/self-dogfood.mjs:7\nimport { repositoryGitState } from '../src/git.ts';\n         ^^^^^^^^^^^^^^^^^^\nSyntaxError: The requested module '../src/git.ts' does not provide an export named 'repositoryGitState'\n    at #asyncInstantiate (node:internal/modules/esm/module_job:327:21)\n    at async ModuleJob.run (node:internal/modules/esm/module_job:431:5)\n    at async node:internal/modules/esm/loader:643:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.19.0\n",
+      "workspace": "Isolated Git archive; cleaned after execution."
+    },
+    {
+      "id": "head-test",
+      "revision": "aac70ce41dd623d1f3d57213ce3b41dd7aef5e95",
+      "command": ["node", "tests/self-dogfood.mjs"],
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "outputTruncated": false,
+      "durationMs": 140,
+      "output": "✔ AC-98 reports clean, tracked-change, and untracked Git states (72.271833ms)\nℹ tests 1\nℹ suites 0\nℹ pass 1\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 74.178375\n",
+      "workspace": "Isolated Git archive; cleaned after execution."
+    }
+  ],
+  "generatedTests": [],
+  "semanticProvider": "mock lexical provider",
+  "summary": {
+    "VERIFIED": 1,
+    "PARTIAL": 0,
+    "UNVERIFIED": 0,
+    "MISSING": 0,
+    "NOT_APPLICABLE": 0
+  },
+  "limitations": [
+    "Sanitized example: temporary repository and archive paths were redacted after execution."
+  ]
+}

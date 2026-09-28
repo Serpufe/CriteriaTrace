@@ -1,0 +1,7 @@
+node_modules/
+dist/
+action/dist/
+coverage/
+package-lock.json
+docs/examples/demo-run/report.json
+docs/examples/demo-run/report.md

@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "tool": {
+    "name": "CriteriaTrace",
+    "version": "0.1.0"
+  },
+  "repository": {
+    "root": "temporary demo fixture (removed after execution)"
+  },
+  "base": "69e1b49d4122b23d96e1b76ec6dccefe14590152",
+  "head": "d205f6828fecadc8cff521bd5e48e3c1ae9ad89a",
+  "createdAt": "2026-09-28T06:05:47.684Z",
+  "sources": [
+    {
+      "id": "demo-spec",
+      "kind": "markdown",
+      "title": "Demo acceptance specification",
+      "text": "# Acceptance criteria\n\n- AC-1: UTF-8 filenames survive archive export.\n"
+    }
+  ],
+  "criteria": [
+    {
+      "id": "AC-1",
+      "text": "UTF-8 filenames survive archive export.",
+      "origin": "explicit",
+      "sourceId": "demo-spec",
+      "status": "PARTIAL",
+      "implementationEvidence": [
+        {
+          "path": "src/export.js",
+          "relation": "implementation",
+          "method": "lexical",
+          "note": "Lexical overlap 20%; inspect the cited file.",
+          "lines": "1-1"
+        }
+      ],
+      "testEvidence": [
+        {
+          "path": "tests/export.test.js",
+          "relation": "test",
+          "method": "explicit-id",
+          "note": "Contains AC-1.",
+          "lines": "3-6"
+        }
+      ],
+      "executions": [
+        "head-test",
+        "base-test"
+      ],
+      "reason": "The repository-controlled base command exited 1 and head exited 0. This is candidate evidence, not independent verification."
+    }
+  ],
+  "executions": [
+    {
+      "id": "base-test",
+      "revision": "69e1b49d4122b23d96e1b76ec6dccefe14590152",
+      "command": [
+        "node",
+        "--test"
+      ],
+      "exitCode": 1,
+      "signal": null,
+      "timedOut": false,
+      "outputTruncated": false,
+      "termination": "exit",
+      "durationMs": 82,
+      "output": "✖ AC-1 preserves UTF-8 filename (0.6525ms)\nℹ tests 1\nℹ suites 0\nℹ pass 0\nℹ fail 1\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 46.420084\n\n✖ failing tests:\n\ntest at tests/export.test.js:6:1\n✖ AC-1 preserves UTF-8 filename (0.6525ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  + actual - expected\n  \n  + 'caf.zip'\n  - 'café.zip'\n        ^\n  \n      at TestContext.<anonymous> (file://[temporary workspace]/tests/export.test.js:7:10)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1382:25)\n      at Test.start (node:internal/test_runner/test:1242:17)\n      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {\n    generatedMessage: true,\n    code: 'ERR_ASSERTION',\n    actual: 'caf.zip',\n    expected: 'café.zip',\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n",
+      "workspace": "Temporary Git archive; trusted host execution."
+    },
+    {
+      "id": "head-test",
+      "revision": "d205f6828fecadc8cff521bd5e48e3c1ae9ad89a",
+      "command": [
+        "node",
+        "--test"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "outputTruncated": false,
+      "termination": "exit",
+      "durationMs": 81,
+      "output": "✔ AC-1 preserves UTF-8 filename (0.305833ms)\nℹ tests 1\nℹ suites 0\nℹ pass 1\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 46.191416\n",
+      "workspace": "Temporary Git archive; trusted host execution."
+    }
+  ],
+  "generatedTests": [],
+  "semanticProvider": "mock lexical provider",
+  "summary": {
+    "VERIFIED": 0,
+    "PARTIAL": 1,
+    "UNVERIFIED": 0,
+    "MISSING": 0,
+    "NOT_APPLICABLE": 0
+  },
+  "limitations": [
+    "This deterministic report was generated from a temporary fixture with the mock semantic provider."
+  ],
+  "executionPolicy": {
+    "mode": "trusted",
+    "network": "host-policy"
+  }
+}

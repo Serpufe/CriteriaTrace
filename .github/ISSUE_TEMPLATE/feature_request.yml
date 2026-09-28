@@ -1,0 +1,25 @@
+name: Feature request
+description: Suggest a focused improvement to criteria traceability or evidence collection.
+title: '[Feature]: '
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Maintainer problem
+      description: What task is difficult with the current CLI or Action?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Example input and useful output
+      description: Use a public or sanitized example.
+    validations:
+      required: false

@@ -1,0 +1,28 @@
+name: CriteriaTrace
+description: Trace acceptance criteria to changed code, tests, and executable evidence.
+author: Serpufe
+inputs:
+  openai-api-key:
+    description: Optional OpenAI API key for criterion decomposition and semantic mapping. Fork pull requests never use it.
+    required: false
+  github-token:
+    description: Token for reading referenced issues and optional same-repository PR comments.
+    required: false
+  comment:
+    description: Update one CriteriaTrace PR comment. Requires pull-requests write permission and is disabled by default.
+    required: false
+    default: 'false'
+outputs:
+  json-report-path:
+    description: Path to the versioned JSON evidence report on the runner.
+  markdown-report-path:
+    description: Path to the Markdown report on the runner.
+  summary:
+    description: JSON object containing counts for each status.
+  base:
+    description: Resolved base commit SHA.
+  head:
+    description: Resolved head commit SHA.
+runs:
+  using: node24
+  main: action/dist/index.js

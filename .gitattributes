@@ -1,0 +1,2 @@
+action/dist/index.js whitespace=-trailing-space
+docs/examples/*/report.md whitespace=-trailing-space

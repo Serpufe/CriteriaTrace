@@ -1,0 +1,3 @@
+CriteriaTrace includes third-party packages. See package.json and package-lock.json for the dependency inventory.
+
+The generated GitHub Action bundle includes dependency license notices in action/dist/licenses.txt. Do not remove that file when updating the bundle.
