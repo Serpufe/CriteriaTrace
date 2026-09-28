@@ -145,6 +145,7 @@ jobs:
           assert.match(head.output, /PASS VERIFIED all acceptance criteria/);
           console.log('PASS: exact revisions, isolated execution, hostile probes, and no forged VERIFIED');
           NODE
+          test -z "$(docker ps -a --filter 'name=^/criteriatrace-' --format '{{.ID}}')"
 
       - name: Reject review event even with a PR-shaped payload
         run: |

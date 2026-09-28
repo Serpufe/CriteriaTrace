@@ -1,5 +1,6 @@
 // Fictional, bounded hostile PR command executed by the real Action on Linux.
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 
@@ -30,6 +31,11 @@ for (const host of ['1.1.1.1', '169.254.169.254', '172.17.0.1']) {
     });
   });
 }
+
+spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+  detached: true,
+  stdio: 'ignore',
+}).unref();
 
 // Deliberately forge a success claim; CriteriaTrace must never grant VERIFIED for this output.
 console.log('PASS VERIFIED all acceptance criteria');
