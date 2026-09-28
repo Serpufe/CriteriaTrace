@@ -4,23 +4,32 @@
   "description": "Trace every acceptance criterion to code, tests, and executable evidence.",
   "type": "module",
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "engines": {
-    "node": ">=20.19.0 || >=22.13.0 || >=24.0.0"
+    "node": "^24.0.0"
   },
   "bin": {
     "criteriatrace": "./dist/cli.js"
   },
   "files": [
     "dist/",
-    "action/dist/",
-    "action.yml",
+    "docs/*.md",
     "README.md",
+    "CONTRIBUTING.md",
+    "ROADMAP.md",
     "LICENSE",
     "NOTICE",
     "SECURITY.md",
     "CHANGELOG.md"
   ],
   "scripts": {
+    "prepack": "npm run build",
     "build": "tsc -p tsconfig.json && npm run build:action",
     "build:action": "ncc build dist/action/index.js -o action/dist --license licenses.txt",
     "demo": "node dist/cli.js demo",
@@ -42,14 +51,17 @@
   ],
   "author": "Serpufe",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Serpufe/criteriatrace.git"
+    "url": "https://github.com/Serpufe/CriteriaTrace.git"
   },
   "bugs": {
-    "url": "https://github.com/Serpufe/criteriatrace/issues"
+    "url": "https://github.com/Serpufe/CriteriaTrace/issues"
   },
-  "homepage": "https://github.com/Serpufe/criteriatrace#readme",
+  "homepage": "https://github.com/Serpufe/CriteriaTrace#readme",
   "dependencies": {
     "@actions/core": "^3.0.1",
     "@actions/github": "^9.1.1",

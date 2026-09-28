@@ -1,6 +1,7 @@
 node_modules/
 /dist/
 coverage/
+release-candidate/
 .criteriatrace-report.*
 .criteriatrace-demo/
 criteriatrace-report.json

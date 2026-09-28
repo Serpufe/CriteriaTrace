@@ -296,7 +296,9 @@ async function runProcess(
   } catch (error) {
     return unavailableExecution(
       request,
-      redactSensitiveText(`Could not start command: ${(error as Error).message}`),
+      redactSensitiveText(
+        `Could not start command: ${(error as Error).message}. Check the configured executable and PATH.`,
+      ),
     );
   }
   let stopping = false;
@@ -374,7 +376,7 @@ async function runProcess(
       cleanupFailed
         ? `${output}\nContainer cleanup could not be confirmed.`
         : settled.error
-          ? `Could not start command: ${settled.error.message}`
+          ? `Could not start command: ${settled.error.message}. Check the configured executable and PATH.`
           : output,
     ),
     workspace: cleanupFailed

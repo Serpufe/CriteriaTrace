@@ -2,6 +2,7 @@ node_modules/
 dist/
 action/dist/
 coverage/
+release-candidate/
 package-lock.json
 docs/examples/demo-run/report.json
 docs/examples/demo-run/report.md

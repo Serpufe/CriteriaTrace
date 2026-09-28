@@ -1,6 +1,8 @@
 # CriteriaTrace
 
-**Trace every acceptance criterion to code, tests, and executable evidence.**
+**Trace acceptance criteria to changed code, candidate tests, and recorded execution evidence.**
+
+CriteriaTrace helps reviewers see which requirements have supporting evidence and which remain gaps. It does not turn a code match, model suggestion, or repository-controlled test result into independent proof.
 
 CriteriaTrace builds a reviewable path from a requirement to changed implementation, candidate tests, and the actual exit results of test commands. It reports gaps instead of turning a code match or model opinion into proof.
 
@@ -10,7 +12,7 @@ CriteriaTrace builds a reviewable path from a requirement to changed implementat
 > | --------------------------------------------- | ----------- | ------------------------------------------------ |
 > | AC-1 — UTF-8 filenames survive archive export | **PARTIAL** | `tests/export.test.js`; base exit 1, head exit 0 |
 >
-> The captured Markdown and JSON from `npm run demo` are in [`docs/examples/demo-run`](docs/examples/demo-run/). The demo executes its own fixed temporary fixture in trusted host mode with the deterministic mock provider; archive paths are shortened in the saved example, and hashes and durations come from that run.
+> The captured Markdown and JSON from `npm run demo` are in [the saved demo example](https://github.com/Serpufe/CriteriaTrace/tree/v0.1.0/docs/examples/demo-run). The demo executes its own fixed temporary fixture in trusted host mode with the deterministic mock provider; archive paths are shortened in the saved example, and hashes and durations come from that run.
 
 ## What it does
 
@@ -24,56 +26,32 @@ Given a local Markdown task, GitHub issue, or pull request, CriteriaTrace:
 
 The deterministic mock provider and demo need no API key. Model output can suggest file links; it cannot choose commands, file paths outside the scanned set, or a test result.
 
-## Quick start
+## Install and quick start
 
-Node.js 20.19+, 22.13+, or 24+ and Git are required. Node 24 is the primary development and Action runtime. Until the first registry release, install from source:
+Node.js 24 and Git are required. The npm registry release is pending. To install the reviewed candidate tarball locally, run `npm install -g ./criteriatrace-0.1.0.tgz` from the directory containing it. After publication, the equivalent registry command is `npm install -g criteriatrace`.
 
-```sh
-git clone https://github.com/Serpufe/criteriatrace.git
-cd criteriatrace
-npm ci
-npm run build
-npm link
-criteriatrace --help
-```
-
-In a repository to analyze, initialize the strict config and set its base revision and test commands:
+In a Git repository with at least two commits:
 
 ```sh
 criteriatrace init
 criteriatrace doctor
-criteriatrace inspect task.md --base origin/main --head HEAD
-criteriatrace verify task.md --base origin/main --head HEAD --format json --output reports/trace.json
+criteriatrace inspect --text "AC-1: preserve the required behavior" --base HEAD~1 --head HEAD
+criteriatrace verify --text "AC-1: preserve the required behavior" --base HEAD~1 --head HEAD --no-exec --format json --output trace.json
 ```
 
-For execution, start a local Docker engine and pull `node:24-alpine` or `python:3.13-alpine` as appropriate. CriteriaTrace never pulls an image automatically. If the test suite needs dependencies, set `commands.setup`. Setup runs inside the same restricted container policy as tests; network is disabled by default, so dependencies must already be available or network must be enabled explicitly. The original checkout is never mounted into the container.
+`init` creates `.criteriatrace.yml`; edit the base revision and command arrays for your project. `inspect` prints candidate links without executing code. The final command writes a versioned JSON report containing exact base/head commit IDs, criterion statuses, and limitations. `--no-exec` is useful before Docker is ready. The offline `criteriatrace demo` writes a self-contained example report with no API key.
 
-```yaml
-version: 1
-provider:
-  name: openai
-  model: gpt-5.5
-verification:
-  base: origin/main
-  counterfactual: true
-  generatedTests: false
-commands:
-  setup: [npm, ci, --ignore-scripts]
-  test: [npm, test]
-  # Optional: generated test runner, also receives a repository-relative file path.
-  generatedTest: [node, node_modules/vitest/vitest.mjs, run, '{testFile}']
-limits:
-  commandTimeoutSeconds: 300
-  maxCommandOutputBytes: 100000
-  maxContextBytes: 80000
-  maxFiles: 500
-  maxFileBytes: 50000
-  maxGeneratedTests: 3
-policy:
-  failOn: [MISSING, UNVERIFIED]
-```
+For default isolated execution, start a local Docker engine and pre-pull the pinned image for your project's framework. CriteriaTrace never pulls images during verification. The current references are in [the image policy](docs/releasing.md#sandbox-image-policy). If tests need dependencies, configure `commands.setup`; it runs under the same isolation policy and has no network by default. The original checkout is never mounted into the container.
 
-The real starter file documents every field and defaults `generatedTests` to false. Unknown keys, malformed YAML, and invalid values fail with a path-specific error. Config files and combined requirement sources are limited to 1 MiB; a run accepts at most 500 criteria and IDs of at most 64 characters. Configured command arguments have count and size limits. Commands are argument arrays, never shell strings, and run with their configured arguments; report copies are redacted. Do not place secrets in command arguments. The isolated backend supports macOS and Linux with a local Docker Unix socket. Windows has no isolated backend; use `--no-exec` or explicitly trusted host mode.
+The starter config uses strict YAML with schema version 1. Configure `commands.test` as an argument array, for example `test: [npm, test]`, and optionally `setup: [npm, ci, --ignore-scripts]`. Unknown keys and invalid values fail with a field-specific error. Config files and requirement sources are bounded; generated tests are disabled by default.
+
+## Platform support
+
+| Platform | CLI                  | Default isolated execution                                                  |
+| -------- | -------------------- | --------------------------------------------------------------------------- |
+| Linux    | CI tested on Node 24 | Linux Docker CI tested                                                      |
+| macOS    | CI tested on Node 24 | Supported with a local Docker Unix socket; no live macOS sandbox test in CI |
+| Windows  | CI tested on Node 24 | No isolated backend; use `--no-exec` or explicitly trusted host execution   |
 
 ## CLI
 
@@ -86,7 +64,7 @@ criteriatrace verify [spec] [--issue <number>] [--text <task>] [--base <rev>] [-
 criteriatrace demo [--output-dir <path>]
 ```
 
-`inspect` collects candidate evidence but never executes repository code. `verify` defaults to isolated execution. If the local Docker engine or required image is unavailable, it records an unavailable execution and continues with static evidence. `--no-exec` skips commands; `--trust-repo` explicitly permits host execution with a filtered environment but without host isolation. `--allow-network` enables container bridge networking and only applies to isolated mode. No mode inherits provider or GitHub tokens into repository commands. Local issue lookup uses the `origin` GitHub remote and `GITHUB_TOKEN` or `GH_TOKEN` when available:
+`inspect` collects candidate evidence but never executes repository code. `verify` defaults to **isolated execution**, the safe default. If the local Docker engine or required image is unavailable, it records an unavailable execution and continues with static evidence. `--no-exec` skips commands; `--trust-repo` explicitly permits host execution with a filtered environment but without host isolation. `--allow-network` enables container bridge networking and only applies to isolated mode. No mode inherits provider or GitHub tokens into repository commands. Local issue lookup uses the `origin` GitHub remote and `GITHUB_TOKEN` or `GH_TOKEN` when available:
 
 ```sh
 criteriatrace verify --issue 184 --base origin/main --head HEAD --format json -o trace.json
@@ -126,9 +104,9 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - run: docker pull node:24-alpine # Use python:3.13-alpine for pytest projects.
+      - run: docker pull node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 # Python uses the pinned reference in docs/releasing.md.
       - id: trace
-        uses: Serpufe/criteriatrace@v1
+        uses: Serpufe/CriteriaTrace@v0.1.0 # Create this immutable tag at release
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: criteriatrace-evidence
@@ -222,4 +200,4 @@ npm run demo
 
 Tests include real temporary Git fixtures for regression, partial, missing, generated-test, malformed-config, unsupported-framework, ambiguous-source, provider-failure, and timeout paths. `npm run demo` needs no API key. A live OpenAI demo is the normal `verify` path with `OPENAI_API_KEY` and a configured OpenAI provider.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/architecture.md](docs/architecture.md), [docs/positioning.md](docs/positioning.md), and [ROADMAP.md](ROADMAP.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/architecture.md](docs/architecture.md), [docs/releasing.md](docs/releasing.md), [docs/positioning.md](docs/positioning.md), and [ROADMAP.md](ROADMAP.md).

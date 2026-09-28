@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command, Option } from 'commander';
 import { mkdir, readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { initConfig, loadConfig, failsPolicy } from './config.js';
@@ -16,17 +17,28 @@ import {
 } from './git.js';
 import { detectFramework } from './execute.js';
 import { isolatedAvailability } from './runtime.js';
+import { sandboxImages } from './images.js';
 import { toJson, toMarkdown } from './report.js';
 import { redactCommand, redactSensitiveData, redactSensitiveText } from './security.js';
 import { inspect, verify, type VerifyOptions } from './verify.js';
 import type { RequirementSource, TraceReport } from './types.js';
 
 const program = new Command();
+const packageVersion = (
+  JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+    version: string;
+  }
+).version;
 program
   .name('criteriatrace')
   .description('Trace acceptance criteria to changed code, tests, and actual execution evidence.')
-  .version('0.1.0')
-  .showHelpAfterError();
+  .version(packageVersion)
+  .showHelpAfterError()
+  .showSuggestionAfterError()
+  .addHelpText(
+    'after',
+    '\nRun in a Git repository. Node 24 and Git are required; isolated verification also needs Docker and a pre-pulled pinned image.\nReports contain exact revisions, candidate evidence, and limitations. See README.md for a quick start.',
+  );
 
 program
   .command('init')
@@ -79,9 +91,7 @@ program
   });
 
 program.parseAsync(process.argv).catch((error: unknown) => {
-  console.error(
-    `criteriatrace: ${redactSensitiveText(error instanceof Error ? error.message : String(error))}`,
-  );
+  console.error(`criteriatrace: ${redactSensitiveText(cliErrorMessage(error))}`);
   process.exitCode = 2;
 });
 
@@ -100,10 +110,20 @@ function addAnalysisCommand(
     .option('--base <revision>', 'base Git revision; defaults to config or origin/HEAD')
     .option('--head <revision>', 'head Git revision', 'HEAD')
     .addOption(new Option('--format <format>', 'report format').choices(['markdown', 'json']))
-    .option('-o, --output <path>', 'write the report to a file')
-    .option('--trust-repo', 'explicitly run repository commands on this host')
-    .option('--no-exec', 'analyze statically without running repository commands')
-    .option('--allow-network', 'allow container network access (isolated mode only)')
+    .option('-o, --output <path>', 'write the report to a file');
+  if (execute) {
+    command
+      .option('--trust-repo', 'explicitly run repository commands on this host')
+      .option('--no-exec', 'analyze statically without running repository commands')
+      .option('--allow-network', 'allow container network access (isolated mode only)');
+  }
+  command
+    .addHelpText(
+      'after',
+      execute
+        ? '\nDefault: isolated Docker execution, no network. --trust-repo runs repository code on your host; --no-exec skips it. Configure commands in .criteriatrace.yml. Output defaults to Markdown on stdout.'
+        : '\nStatic analysis only: no repository commands run. Output defaults to Markdown on stdout.',
+    )
     .action(
       async (
         spec: string | undefined,
@@ -154,6 +174,17 @@ function addAnalysisCommand(
         if (execute) process.exitCode = await verifyExitCode(report, root, executionMode);
       },
     );
+}
+
+function cliErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/not a git repository/i.test(message))
+    return 'This directory is not a Git repository. Run CriteriaTrace from the repository you want to analyze.';
+  if (/Needed a single revision|unknown revision|bad revision/i.test(message))
+    return `Git revision not found. Check --base and --head against committed revisions. ${message}`;
+  if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT')
+    return `A file or command could not be found. Check the specification path and installed Git. ${message}`;
+  return message;
 }
 
 async function loadSources(
@@ -242,8 +273,8 @@ async function doctor(): Promise<Record<string, unknown>> {
     runtime: { node: process.version, platform: process.platform },
     testFramework: detectFramework(packageJson, paths, pythonConfig),
     isolation: {
-      node: isolatedAvailability('node:24-alpine'),
-      python: isolatedAvailability('python:3.13-alpine'),
+      node: isolatedAvailability(sandboxImages.node),
+      python: isolatedAvailability(sandboxImages.python),
     },
     configuration: {
       path: `${root}/.criteriatrace.yml`,

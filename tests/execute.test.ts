@@ -7,6 +7,24 @@ import { createProject } from './helpers.js';
 import { loadConfig } from '../src/config.js';
 
 describe('test framework adapters and process limits', () => {
+  it('explains how to fix a configured command that cannot start', async () => {
+    const project = await createProject({ testCommand: ['criteriatrace-missing-executable'] });
+    try {
+      const result = await executeRevision({
+        executionMode: 'trusted',
+        root: project.root,
+        ref: 'HEAD',
+        revisionLabel: 'head',
+        config: await loadConfig(project.root),
+        framework: detectFramework(undefined, []),
+      });
+      expect(result.at(-1)?.termination).toBe('start-failed');
+      expect(result.at(-1)?.output).toContain('Check the configured executable and PATH.');
+    } finally {
+      await project.cleanup();
+    }
+  });
+
   it('detects Vitest, Jest, pytest, and unsupported projects', () => {
     expect(detectFramework('{"devDependencies":{"vitest":"1"}}', []).framework).toBe('vitest');
     expect(detectFramework('{"devDependencies":{"jest":"1"}}', []).framework).toBe('jest');

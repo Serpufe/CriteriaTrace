@@ -1,0 +1,94 @@
+name: Release candidate
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Match release tag to package version
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import pkg from './package.json' with { type: 'json' };
+          const ref = process.env.RELEASE_REF;
+          if (ref.startsWith('refs/tags/')) assert.equal(ref, `refs/tags/v${pkg.version}`);
+          console.log(`Release candidate ${pkg.name}@${pkg.version} from ${ref}`);
+          NODE
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Check format, lint and types
+        run: |
+          npm run format:check
+          npm run lint
+          npm run typecheck
+
+      - name: Build CLI and Action
+        run: npm run build
+
+      - name: Check committed Action bundle
+        run: git diff --exit-code -- action/dist/
+
+      - name: Pull pinned sandbox images
+        run: |
+          docker pull "$(node scripts/print-sandbox-image.mjs node)"
+          docker pull "$(node scripts/print-sandbox-image.mjs python)"
+
+      - name: Test and audit
+        run: |
+          npm test
+          npm audit --audit-level=low
+        env:
+          CRITERIATRACE_REQUIRE_DOCKER: '1'
+
+      - name: Pack release candidate
+        run: |
+          npm pack --ignore-scripts --json > "$RUNNER_TEMP/criteriatrace-pack.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          const [pack] = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/criteriatrace-pack.json`, 'utf8'));
+          const sha256 = createHash('sha256').update(readFileSync(pack.filename)).digest('hex');
+          const manifest = { name: pack.name, version: pack.version, filename: pack.filename, size: pack.size, files: pack.entryCount, sha256 };
+          writeFileSync('release-candidate.json', `${JSON.stringify(manifest, null, 2)}\n`);
+          console.log(JSON.stringify(manifest));
+          NODE
+
+      - name: Install and exercise the tarball outside the checkout
+        run: node scripts/smoke-tarball.mjs criteriatrace-*.tgz
+
+      - name: Exercise bundled Action in a temporary Git repository
+        run: node scripts/smoke-action.mjs
+
+      - name: Upload candidate for manual publication
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: criteriatrace-release-candidate
+          path: |
+            criteriatrace-*.tgz
+            release-candidate.json
+          if-no-files-found: error

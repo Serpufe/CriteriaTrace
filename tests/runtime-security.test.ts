@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { detectFramework, executeRevision } from '../src/execute.js';
 import { loadConfig } from '../src/config.js';
+import { sandboxImages } from '../src/images.js';
 import { verify } from '../src/verify.js';
 import {
   isolatedAvailability,
@@ -15,13 +16,13 @@ import {
 } from '../src/runtime.js';
 import { createProject } from './helpers.js';
 
-const available = !isolatedAvailability('node:24-alpine');
+const available = !isolatedAvailability(sandboxImages.node);
 const framework = detectFramework(undefined, []);
 
 it('requires a working local Docker daemon and pre-pulled image in Linux isolation CI', () => {
   if (process.env.CRITERIATRACE_REQUIRE_DOCKER === '1') {
     expect(process.platform).toBe('linux');
-    expect(isolatedAvailability('node:24-alpine')).toBeUndefined();
+    expect(isolatedAvailability(sandboxImages.node)).toBeUndefined();
   }
 });
 
@@ -59,7 +60,7 @@ describe('execution policy and adversarial repository commands', () => {
         await writeFile(join(dir, 'docker'), `#!/bin/sh\nprintf bad > "${marker}"\n`);
         await chmod(join(dir, 'docker'), 0o755);
         process.env.PATH = `${dir}:${original ?? ''}`;
-        isolatedAvailability('node:24-alpine');
+        isolatedAvailability(sandboxImages.node);
         await expect(readFile(marker)).rejects.toMatchObject({ code: 'ENOENT' });
       } finally {
         if (original === undefined) delete process.env.PATH;
@@ -121,7 +122,7 @@ describe('execution policy and adversarial repository commands', () => {
       workspace: tmpdir(),
       timeoutMs: 5000,
       outputBytes: 1024,
-      policy: { mode: 'trusted', allowNetwork: false, image: 'node:24-alpine' },
+      policy: { mode: 'trusted', allowNetwork: false, image: sandboxImages.node },
     });
     expect(
       result.termination,
@@ -137,6 +138,53 @@ describe('execution policy and adversarial repository commands', () => {
 });
 
 describe.skipIf(!available)('live isolated container attacks', () => {
+  it('throttles a bounded two-worker CPU load under the configured quota', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'criteriatrace-cpu-'));
+    let name: string | undefined;
+    try {
+      await chmod(workspace, 0o755);
+      name = await startIsolatedSession(workspace, {
+        mode: 'isolated',
+        allowNetwork: false,
+        image: sandboxImages.node,
+      });
+      expect(name).toBeDefined();
+      const readCpu = () => {
+        const quota = execFileSync('docker', ['exec', name!, 'cat', '/sys/fs/cgroup/cpu.max'], {
+          encoding: 'utf8',
+        }).trim();
+        const stat = execFileSync('docker', ['exec', name!, 'cat', '/sys/fs/cgroup/cpu.stat'], {
+          encoding: 'utf8',
+        });
+        const throttled = Number(stat.match(/^nr_throttled (\d+)$/m)?.[1]);
+        return { quota, throttled };
+      };
+      const before = readCpu();
+      expect(before.quota).toBe('100000 100000');
+      expect(Number.isFinite(before.throttled)).toBe(true);
+      const load = `const { Worker } = require('node:worker_threads');
+        const source = 'const until=Date.now()+2500;while(Date.now()<until){}';
+        Promise.all(Array.from({length:2},()=>new Promise((resolve,reject)=>{
+          const worker=new Worker(source,{eval:true});
+          worker.once('exit',code=>code===0?resolve():reject(new Error('worker exit '+code)));
+          worker.once('error',reject);
+        }))).then(()=>process.stdout.write('CPU_LOAD_DONE'));`;
+      const output = execFileSync('docker', ['exec', name!, 'node', '-e', load], {
+        encoding: 'utf8',
+        timeout: 8000,
+      });
+      expect(output).toContain('CPU_LOAD_DONE');
+      const after = readCpu();
+      expect(after.throttled - before.throttled).toBeGreaterThan(0);
+      console.log(
+        `CPU quota ${before.quota}; throttled periods +${after.throttled - before.throttled}`,
+      );
+    } finally {
+      if (name) stopIsolatedSession(name);
+      await rm(workspace, { recursive: true, force: true });
+    }
+  }, 15_000);
+
   it('applies Linux container limits and network none to the actual Docker session', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'criteriatrace-limits-'));
     let name: string | undefined;
@@ -145,7 +193,7 @@ describe.skipIf(!available)('live isolated container attacks', () => {
       name = await startIsolatedSession(workspace, {
         mode: 'isolated',
         allowNetwork: false,
-        image: 'node:24-alpine',
+        image: sandboxImages.node,
       });
       expect(name).toBeDefined();
       const inspected = JSON.parse(
@@ -188,7 +236,7 @@ describe.skipIf(!available)('live isolated container attacks', () => {
       name = await startIsolatedSession(workspace, {
         mode: 'isolated',
         allowNetwork: true,
-        image: 'node:24-alpine',
+        image: sandboxImages.node,
       });
       expect(name).toBeDefined();
       const network = execFileSync(
@@ -230,7 +278,11 @@ describe.skipIf(!available)('live isolated container attacks', () => {
       const workspace = await mkdtemp(join(tmpdir(), 'criteriatrace,bad-mount-'));
       const marker = join(workspace, 'host-executed');
       try {
-        const policy = { mode: 'isolated' as const, allowNetwork: false, image: 'node:24-alpine' };
+        const policy = {
+          mode: 'isolated' as const,
+          allowNetwork: false,
+          image: sandboxImages.node,
+        };
         expect(await startIsolatedSession(workspace, policy)).toBeUndefined();
         const result = await executeCommand({
           id: 'bad-mount',
@@ -431,7 +483,7 @@ describe.skipIf(!available)('live isolated container attacks', () => {
 
   it('removes the exact container and detached descendants after timeout', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'criteriatrace-process-'));
-    const policy = { mode: 'isolated' as const, allowNetwork: false, image: 'node:24-alpine' };
+    const policy = { mode: 'isolated' as const, allowNetwork: false, image: sandboxImages.node };
     let name: string | undefined;
     try {
       await chmod(workspace, 0o755);
@@ -480,7 +532,7 @@ describe.skipIf(!available)('live isolated container attacks', () => {
   it('reports unavailable if the container disappears before docker exec', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'criteriatrace-vanished-'));
     const marker = join(workspace, 'host-executed');
-    const policy = { mode: 'isolated' as const, allowNetwork: false, image: 'node:24-alpine' };
+    const policy = { mode: 'isolated' as const, allowNetwork: false, image: sandboxImages.node };
     let name: string | undefined;
     try {
       await chmod(workspace, 0o755);
