@@ -1,0 +1,12 @@
+version: 1
+provider:
+  name: mock
+  model: deterministic
+verification:
+  base: HEAD~1
+  counterfactual: true
+  generatedTests: false
+commands:
+  test: [node, --test]
+policy:
+  failOn: [MISSING]

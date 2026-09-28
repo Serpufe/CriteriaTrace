@@ -1,0 +1,42 @@
+# Security policy
+
+## Supported versions
+
+Only the current `0.1.x` development line is supported while the initial public release is being prepared.
+
+## Report a vulnerability
+
+Do not open a public issue for an exploitable vulnerability. Use [GitHub's private vulnerability reporting](https://github.com/Serpufe/criteriatrace/security/advisories/new) if it is enabled. Include the affected version, reproduction steps, and impact. Do not include real secrets or private repository contents.
+
+## Repository command boundary
+
+`verify` treats `commands.setup`, `commands.test`, detected framework commands, generated tests, and their children as arbitrary hostile code. Its default is `isolated`. The only isolated backend is a local Docker engine on macOS or Linux with the appropriate **pre-pulled** `node:24-alpine` or `python:3.13-alpine` image. CriteriaTrace never pulls or builds an image during verification. If the local daemon or image is missing, no repository command runs and the report records unavailable execution. `inspect` and `verify --no-exec` perform static analysis. `verify --trust-repo` is an explicit opt-in to host execution; use it only for code you trust.
+
+| Question                               | Isolated mode                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Can the repository read my files?      | It sees only a read-only export of the selected Git commit and the container image. The original checkout, real HOME, SSH files, Docker socket, other projects, and host `/tmp` are not mounted. Files deliberately committed in the selected revision remain visible.                                                                             |
+| Can it read my environment?            | No host environment is inherited into the container. Only fixed `HOME`, `TMPDIR`, `CI`, `NODE_ENV`, and `LANG` values are added to image defaults. Provider keys and GitHub tokens remain in the parent process.                                                                                                                                   |
+| Can it use Internet or host localhost? | Default `--network none` removes external networking, including host localhost, LAN, and metadata endpoints. Container-local loopback may still exist. `--allow-network` selects Docker bridge networking, which can reach network destinations including potentially host or LAN services; use it only when required.                             |
+| Can it leave processes alive?          | Docker stops descendants when the container stops. On timeout, output limit, cancellation, and normal exit, CriteriaTrace force-removes and checks the named container. If daemon cleanup cannot be confirmed, execution is marked unavailable and no cleanup guarantee is claimed.                                                                |
+| Can it write outside its workspace?    | The Git export is mounted read-only at `/source`. Code runs as uid/gid 65534 in a 256 MiB `/work` tmpfs copied from that export. `/tmp` is a separate 64 MiB tmpfs. The image root is read-only. No host-writable mount is passed.                                                                                                                 |
+| What resource limits apply?            | Each container has a 512 MiB memory/swap cap, one CPU quota, 64 process limit, 1024 open-file limit, a configured wall timeout, and bounded output. Exceeding the output budget terminates the container and records `output-limit`. These limits depend on Docker daemon support and do not make a shared kernel invulnerable to kernel exploits. |
+
+`--trust-repo` runs in a temporary Git export with a temporary HOME and an explicit small environment, but with the user's host filesystem and network access. Its process-group kill is best effort; a hostile detached child can escape. Use `--no-exec` for analysis without commands. `--allow-network` is rejected with either of those modes.
+
+The isolated backend trusts the local Docker daemon, its image, the container runtime, and the host kernel (or Docker Desktop VM on macOS). A compromised daemon, malicious image, kernel/container escape, or another privileged actor can break the boundary. Linux rootful Docker shares the host kernel; rootless Docker or a VM adds a stronger host boundary. On macOS Docker Desktop runs Linux containers in a VM; only the temporary export is shared. CriteriaTrace does not assert that a Docker container is equivalent to a VM or a security proof.
+
+Repository symlinks may point outside `/work`, but resolution stays inside the container filesystem; host targets are not mounted. The export is never a sandbox by itself. Git inspection uses a minimal environment without user global/system config, disables fsmonitor, external diff and textconv on relevant commands, and never runs a repository-controlled fetch in the Action. Git commands still parse untrusted repository objects; keep Git and Docker current.
+
+## Evidence integrity
+
+Stdout and stderr are untrusted data. A repository can print `PASS`, claim a test filename, or deliberately return exit 0. Even a base-fails/head-passes pattern can be engineered by its own scripts. Such execution can support `PARTIAL`, never `VERIFIED` on its own. `VERIFIED` is reserved for a future independent evidence source. Candidate links from lexical matching or a semantic provider are review aids, not proof. Generated tests and their runners can also be incomplete or deceptive.
+
+Captured output has a byte cap; redaction of known secrets is defense in depth, not a substitute for the execution boundary. Source text, requirement text, tracked files, and report paths may still contain secrets deliberately placed in the analyzed repository. OpenAI receives bounded source snippets when enabled in the parent process.
+
+## GitHub Actions
+
+The Action accepts exactly `pull_request`, checks the event's exact base/head commit IDs, and requires both commits already present in checkout. Use `fetch-depth: 0`; the Action does not fetch through repository Git configuration. It uses the same isolated default and will not silently execute PR code on the runner if Docker or the image is unavailable. Pre-pull the required image in a trusted workflow step if execution is desired. Do not use `pull_request_target` or give untrusted PR jobs privileged secrets or write tokens. Fork PRs never receive the OpenAI key in CriteriaTrace; GitHub organization settings may vary, so set workflow permissions explicitly. Comments are disabled by default and limited to same-repository PRs.
+
+A GitHub-hosted runner is ephemeral but may hold a read-only `GITHUB_TOKEN` and workflow secrets during the job. Container isolation keeps repository commands from the parent's environment and runner files; it does not protect against code run by other workflow steps or unsafe checkout/build steps outside CriteriaTrace. Artifacts and job summaries contain untrusted report content and should be reviewed accordingly.
+
+Platform details: [Docker run controls](https://docs.docker.com/reference/cli/docker/container/run/), [bind mount behavior](https://docs.docker.com/engine/storage/bind-mounts/), [Docker Desktop on macOS](https://docs.docker.com/desktop/setup/install/mac-permission-requirements/), and [GitHub Actions secure use](https://docs.github.com/en/actions/reference/security/secure-use).
