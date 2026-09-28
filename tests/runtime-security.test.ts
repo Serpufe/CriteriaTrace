@@ -294,7 +294,7 @@ describe.skipIf(!available)('live isolated container attacks', () => {
   });
 
   it('cannot reach DNS, Internet, metadata, or Docker gateway addresses', async () => {
-    const script = `const dns=require('dns'),net=require('net');const targets=['1.1.1.1','169.254.169.254','172.17.0.1','192.168.1.1'];function probe(host){return new Promise(resolve=>{const s=net.connect({host,port:80});s.setTimeout(400);s.on('connect',()=>{s.destroy();resolve(host+':CONNECTED')});s.on('error',()=>resolve(host+':DENIED'));s.on('timeout',()=>{s.destroy();resolve(host+':DENIED')})})}const dnsProbe=Promise.race([new Promise(resolve=>dns.lookup('example.com',error=>resolve('DNS:'+(error?'DENIED':'RESOLVED')))),new Promise(resolve=>setTimeout(()=>resolve('DNS:DENIED'),1200))]);Promise.all([dnsProbe,...targets.map(probe)]).then(lines=>process.stdout.write(lines.join('\\n')+'\\n',()=>process.exit(0)));`;
+    const script = `const dns=require('dns'),net=require('net'),fs=require('fs');const targets=['1.1.1.1','169.254.169.254','172.17.0.1','192.168.1.1'];function probe(host){return new Promise(resolve=>{const s=net.connect({host,port:80});s.setTimeout(400);s.on('connect',()=>{s.destroy();resolve(host+':CONNECTED')});s.on('error',()=>resolve(host+':DENIED'));s.on('timeout',()=>{s.destroy();resolve(host+':DENIED')})})}const dnsProbe=Promise.race([new Promise(resolve=>dns.lookup('example.com',error=>resolve('DNS:'+(error?'DENIED':'RESOLVED')))),new Promise(resolve=>setTimeout(()=>resolve('DNS:DENIED'),1200))]);Promise.all([dnsProbe,...targets.map(probe)]).then(lines=>{fs.writeSync(1,lines.join('\\n')+'\\n');process.exit(0)});`;
     const result = await runInProject(['node', '-e', script]);
     expect(
       result.exitCode,

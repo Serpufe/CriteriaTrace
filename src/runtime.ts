@@ -305,10 +305,11 @@ async function runProcess(
     if (stopping) return;
     stopping = true;
     termination = reason;
+    // Release docker exec's output pipe before waiting on daemon removal.
+    killGroup(child);
     if (containerName) {
       if (!removeContainer(containerName)) cleanupFailed = true;
     }
-    killGroup(child);
   };
   const collect = (chunk: Buffer) => {
     const remaining = Math.max(0, request.outputBytes - outputSize);

@@ -91131,11 +91131,12 @@ async function runProcess(request, executable, args, env, containerName, cleanup
             return;
         stopping = true;
         termination = reason;
+        // Release docker exec's output pipe before waiting on daemon removal.
+        killGroup(child);
         if (containerName) {
             if (!removeContainer(containerName))
                 cleanupFailed = true;
         }
-        killGroup(child);
     };
     const collect = (chunk) => {
         const remaining = Math.max(0, request.outputBytes - outputSize);
