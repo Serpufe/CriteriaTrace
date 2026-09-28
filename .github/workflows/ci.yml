@@ -85,7 +85,7 @@ jobs:
 
   hostile-pr-action:
     name: Controlled hostile PR against trusted Action
-    if: github.event_name == 'pull_request' && github.base_ref == 'codex/criteria-baseline' && github.head_ref == 'codex/linux-sandbox-validation'
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref == 'codex/linux-sandbox-validation'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -166,7 +166,7 @@ jobs:
 
   stopped-daemon:
     name: Fail closed with stopped Docker daemon
-    if: github.event_name == 'pull_request' && github.base_ref == 'codex/criteria-baseline' && github.head_ref == 'codex/linux-sandbox-validation'
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref == 'codex/linux-sandbox-validation'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
