@@ -37,7 +37,7 @@ Configuration parsing rejects non-file config paths, files above 1 MiB, NUL byte
 
 - Model output can suggest a candidate path only from a deterministic allowlist; it never selects a revision, command, or host path.
 - A repository-controlled test runner can lie in its output and exit code. It cannot grant `VERIFIED`, even if base fails and head exits 0.
-- Default isolated mode requires a local Docker Unix socket and a previously pulled image selected by a fixed but mutable tag. It uses `--network none`, a read-only image/source mount, separate bounded tmpfs work and temp directories, nonroot uid, dropped capabilities, no new privileges, seccomp default, and CPU, memory, process, time, and output limits. A lost container is reported unavailable. See [SECURITY.md](../SECURITY.md) for guarantees and residual risks.
+- Default isolated mode requires a local Docker Unix socket and a previously pulled image selected by a fixed multi-platform index digest. It uses `--network none`, a read-only image/source mount, separate bounded tmpfs work and temp directories, nonroot uid, dropped capabilities, no new privileges, seccomp default, and CPU, memory, process, time, and output limits. A lost container is reported unavailable. See [SECURITY.md](../SECURITY.md) for guarantees and residual risks.
 - `--trust-repo` deliberately returns to host execution with filtering and best-effort process group control. `--no-exec` provides static evidence only. Neither mode is called isolated.
 - Temporary Git exports are data copies and cleanup units, never the isolation boundary.
 

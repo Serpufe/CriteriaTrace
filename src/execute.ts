@@ -2,6 +2,7 @@ import { lstat, mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import type { CommandExecution, CriteriaTraceConfig, ExecutionMode } from './types.js';
 import { snapshot } from './git.js';
+import { sandboxImages } from './images.js';
 import {
   executeCommand,
   isolatedAvailability,
@@ -96,7 +97,7 @@ export async function executeRevision(options: {
   const policy: ExecutionPolicy = {
     mode: options.executionMode ?? 'isolated',
     allowNetwork: options.allowNetwork ?? false,
-    image: framework.framework === 'pytest' ? 'python:3.13-alpine' : 'node:24-alpine',
+    image: framework.framework === 'pytest' ? sandboxImages.python : sandboxImages.node,
   };
   const checkout = await snapshot(root, ref);
   let sessionName: string | undefined;

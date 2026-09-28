@@ -41,11 +41,15 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      - name: Build CLI and Action bundle
+        run: npm run build
+
       - name: Prepare isolated runtime for adversarial tests
         if: matrix.os == 'ubuntu-latest'
         run: |
-          docker pull node:24-alpine
-          docker image inspect node:24-alpine --format '{{index .RepoDigests 0}}'
+          image="$(node scripts/print-sandbox-image.mjs node)"
+          docker pull "$image"
+          docker image inspect "$image" --format '{{index .RepoDigests 0}}'
 
       - name: Test
         run: npm test
@@ -55,9 +59,6 @@ jobs:
       - name: Audit dependencies
         if: matrix.os == 'ubuntu-latest'
         run: npm audit --audit-level=low
-
-      - name: Build CLI and Action bundle
-        run: npm run build
 
       - name: Check committed Action bundle
         if: matrix.os == 'ubuntu-latest'
@@ -221,7 +222,7 @@ jobs:
       - name: Lose Docker daemon during a running command
         run: |
           sudo systemctl start docker.socket docker.service
-          docker pull node:24-alpine
+          docker pull "$(node scripts/print-sandbox-image.mjs node)"
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
           import { execFileSync } from 'node:child_process';
@@ -229,9 +230,10 @@ jobs:
           import { tmpdir } from 'node:os';
           import { join } from 'node:path';
           import { executeCommand, startIsolatedSession, stopIsolatedSession } from './dist/runtime.js';
+          import { sandboxImages } from './dist/images.js';
           const workspace = await mkdtemp(join(tmpdir(), 'criteriatrace-daemon-loss-'));
           const marker = join(workspace, 'host-executed');
-          const policy = { mode: 'isolated', allowNetwork: false, image: 'node:24-alpine' };
+          const policy = { mode: 'isolated', allowNetwork: false, image: sandboxImages.node };
           let name;
           try {
             await chmod(workspace, 0o755);

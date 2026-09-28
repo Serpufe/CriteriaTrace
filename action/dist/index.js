@@ -1131,7 +1131,7 @@ exports.debug = debug; // for test
 const Client = __nccwpck_require__(3701)
 const Dispatcher = __nccwpck_require__(883)
 const Pool = __nccwpck_require__(628)
-const BalancedPool = __nccwpck_require__(837)
+const BalancedPool = __nccwpck_require__(3218)
 const Agent = __nccwpck_require__(7405)
 const ProxyAgent = __nccwpck_require__(6672)
 const EnvHttpProxyAgent = __nccwpck_require__(3137)
@@ -5402,7 +5402,7 @@ module.exports = Agent
 
 /***/ }),
 
-/***/ 837:
+/***/ 3218:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 
@@ -90875,6 +90875,14 @@ function truncateUtf8(value, maxBytes) {
     return bytes.subarray(0, end).toString('utf8');
 }
 //# sourceMappingURL=provider.js.map
+;// CONCATENATED MODULE: ./dist/images.js
+// Update these together in a reviewed release change. See docs/releasing.md.
+// The digest pins the multi-platform index; the tag documents the intended runtime line.
+const sandboxImages = {
+    node: 'node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1',
+    python: 'python:3.13-alpine@sha256:79e7a9b9ff1cbceff819f856fb374477792a5967759d94df266de7b7b4120e6f',
+};
+//# sourceMappingURL=images.js.map
 ;// CONCATENATED MODULE: ./dist/runtime.js
 
 
@@ -91122,7 +91130,7 @@ async function runProcess(request, executable, args, env, containerName, cleanup
         });
     }
     catch (error) {
-        return unavailableExecution(request, redactSensitiveText(`Could not start command: ${error.message}`));
+        return unavailableExecution(request, redactSensitiveText(`Could not start command: ${error.message}. Check the configured executable and PATH.`));
     }
     let stopping = false;
     let pendingStop;
@@ -91198,7 +91206,7 @@ async function runProcess(request, executable, args, env, containerName, cleanup
         output: redactSensitiveText(cleanupFailed
             ? `${output}\nContainer cleanup could not be confirmed.`
             : settled.error
-                ? `Could not start command: ${settled.error.message}`
+                ? `Could not start command: ${settled.error.message}. Check the configured executable and PATH.`
                 : output),
         workspace: cleanupFailed
             ? 'Container cleanup could not be confirmed.'
@@ -91211,6 +91219,7 @@ async function runProcess(request, executable, args, env, containerName, cleanup
 }
 //# sourceMappingURL=runtime.js.map
 ;// CONCATENATED MODULE: ./dist/execute.js
+
 
 
 
@@ -91269,7 +91278,7 @@ async function executeRevision(options) {
     const policy = {
         mode: options.executionMode ?? 'isolated',
         allowNetwork: options.allowNetwork ?? false,
-        image: framework.framework === 'pytest' ? 'python:3.13-alpine' : 'node:24-alpine',
+        image: framework.framework === 'pytest' ? sandboxImages.python : sandboxImages.node,
     };
     const checkout = await snapshot(root, ref);
     let sessionName;
