@@ -66,7 +66,7 @@ jobs:
       - name: CLI smoke checks
         run: |
           node dist/cli.js --help
-          node dist/cli.js init
+          node dist/cli.js init --help
           node dist/cli.js doctor --format json
 
       - name: Offline demo
@@ -152,7 +152,7 @@ jobs:
             echo 'FAIL: pull_request_review was accepted'
             exit 1
           fi
-          rg 'requires a pull_request event' "$RUNNER_TEMP/criteriatrace-review-event.log"
+          grep -F 'requires a pull_request event' "$RUNNER_TEMP/criteriatrace-review-event.log"
 
       - name: Upload Action evidence
         if: always()
